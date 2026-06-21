@@ -1,0 +1,7 @@
+recordings/
+_logs/
+_transcripts/
+.processed.json
+*.meta.json
+node_modules/
+.env
