@@ -841,6 +841,7 @@ async function playRec(rec){
 
 // ── seek bar fill ─────────────────────────────────────────────────────────────
 function updateSeekFill(){
+  if(!seekBar)return; // guard: applyTheme() may call this before refs are defined
   var clr=settings.accentColor||'#c4b5fd';
   var pct=seekBar.max>0?(seekBar.value/seekBar.max)*100:0;
   seekBar.style.background='linear-gradient(to right,'+clr+' '+pct+'%,rgba(255,255,255,.1) '+pct+'%)';
