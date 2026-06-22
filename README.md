@@ -1,124 +1,96 @@
 # Voice Recorder
 
-A local-first browser voice recorder. No cloud, no account, no `npm install`. Recordings save directly to disk.
+A clean, local-first voice recorder that runs entirely in your browser. **No account, no install, no cloud** — your audio never leaves your device. Record, play back, mark, rename, and download, all from a single page.
 
-> Single-file Node.js server + full UI — just `node recorder-server.js` and you're recording.
+### ▶ [**Open the app →**](https://nsoxbekdn.github.io/voice-recorder/)
 
----
-
-## Features
-
-- **Record, pause, resume, stop** with live animated waveform
-- **Markers** — drop a timestamp mid-recording with `Ctrl+M`; markers appear as dots on the seek bar during playback
-- **Recording library** — browse, search, and play back past recordings from the sidebar
-- **Playback controls** — seek bar, speed selector (0.25× – 4×), per-recording markers
-- **Microphone selector** — switch input device without reloading
-- **Rename / Delete** — inline rename (`F2`) and delete (`Del`) from the sidebar
-- **Settings panel** — configure save folder, filename prefix, and port from inside the app (`Ctrl+,`)
-- **Show in folder** — opens the recordings directory in your file manager
-- **Collapsible sidebar** — auto-collapses while recording, re-opens on save
-- **Zero dependencies** — uses only Node.js built-ins
-- **Cross-platform** — Windows, macOS, Linux
+> Hosted on GitHub Pages. It's just one `index.html` file — nothing is uploaded anywhere, and recordings are stored locally in your browser.
 
 ---
 
-## Quick Start
+## What it does
 
-**Requirements:** [Node.js](https://nodejs.org) 14 or later (no other dependencies).
+Hit the red button and talk. Recordings are saved **in your browser** (IndexedDB) so they're still there when you come back, and you can download any of them as a file whenever you want. Great for study notes, voice memos, practice takes, and quick audio capture.
 
-```bash
-# clone or download the repo, then:
-node recorder-server.js
-```
-
-Open [http://localhost:3131](http://localhost:3131) in your browser and hit the red button.
-
-### Windows launcher
-
-Double-click **`Run Recorder.cmd`** — starts the server and opens the browser automatically.
+| | |
+|---|---|
+| 🎙️ **Record / pause / resume / stop** | with a live animated waveform |
+| 📚 **Recording library** | browse, search, and replay everything you've recorded, from the sidebar |
+| 📍 **Markers** | drop a timestamp mid-recording (`Ctrl+M`); markers show as dots on the seek bar |
+| ⏯️ **Playback controls** | scrubbable seek bar + speed selector (0.5× – 4×) |
+| 🎚️ **Microphone picker** | choose any connected input — list updates live when you plug/unplug a device |
+| ✏️ **Rename / delete** | inline rename (`F2`) and delete (`Del`) from the sidebar |
+| ⬇️ **Download** | export any recording as **WebM** or **WAV** (converted in-browser, no tools needed) |
+| 🌙 **Auto-stop on silence** | optionally end the recording after 10 / 30 / 60 s of quiet |
+| 🎨 **Custom accent color** | pick any hex color and the whole app re-themes to match |
+| 💾 **Persistent & private** | everything stays in your browser — nothing is sent to a server |
 
 ---
 
 ## Settings
 
-Click the **gear icon** (top-right of the recorder) or press `Ctrl+,` to open Settings.
+Open the **gear icon** (top-right) to configure:
 
-| Setting | Default | Description |
+| Setting | Options | What it does |
 |---|---|---|
-| Save folder | `./recordings` | Where audio files are saved. Relative to `recorder-server.js`, or an absolute path. |
-| Filename prefix | `Recording` | Files are named `Prefix (1).webm`, `Prefix (2).webm`, … |
-| Port | `3131` | HTTP port. Restart the server after changing. |
+| **Accent color** | any hex / color picker | Re-skins the entire app to your color |
+| **Download format** | WebM · WAV | Format used when you download. WAV is lossless but larger (converted in-browser) |
+| **Recording quality** | High 192 kbps · Medium 96 kbps · Low 32 kbps | Bitrate of the captured audio |
+| **Channels** | Mono · Stereo | Mono is recommended for voice — half the size, no quality loss |
+| **Default playback speed** | 0.5× – 2× | Speed new playbacks start at |
+| **Auto-stop on silence** | Off · 10 / 30 / 60 s | Automatically stop recording after a period of quiet |
+| **Filename prefix** | text | Prefix for downloaded files, e.g. `Recording (1).webm` |
 
-Settings are persisted to `settings.json` next to the server file (gitignored by default).
-
-You can also set these via environment variables at startup, which takes precedence over `settings.json`:
-
-```bash
-RECORDINGS_DIR="/home/user/audio" PORT=8080 node recorder-server.js
-```
+Settings persist locally in your browser.
 
 ---
 
-## Keyboard Shortcuts
+## Keyboard shortcuts
 
 | Key | Action |
 |---|---|
 | `Ctrl+R` | Start recording |
-| `Space` | Pause / Resume recording (or play/pause in playback) |
+| `Space` | Pause / resume (or play / pause during playback) |
 | `Esc` | Stop recording |
 | `Ctrl+M` | Drop a marker at the current timestamp |
-| `Ctrl+,` | Open Settings |
 | `F2` | Rename selected recording |
 | `Del` | Delete selected recording |
 | `← / →` | Seek ±1 s during playback |
 
 ---
 
-## File Layout
+## Run it yourself
 
-```
-recorder-server.js    — Node server + full UI (single file, zero dependencies)
-recorder.py           — Optional standalone desktop recorder (Python + tkinter)
-package.json          — npm metadata (start script only; no dependencies)
-Run Recorder.cmd      — Windows one-click launcher
-recordings/           — Saved .webm files land here (gitignored)
-settings.json         — Your local settings (auto-created, gitignored)
-```
+It's a single static file. Any of these work:
 
-Each recording also gets a `.meta.json` sidecar (duration + markers) stored alongside the audio file.
+- **Easiest:** use the [hosted version](https://nsoxbekdn.github.io/voice-recorder/).
+- **Local:** download `index.html` and open it in your browser (or serve the folder with any static server, e.g. `python -m http.server`).
+- **Your own GitHub Pages:** fork this repo and enable Pages on the `master` branch — your copy lives at `https://<you>.github.io/voice-recorder/`.
 
-### Audio format
-
-Recordings are saved as `.webm` (WebM/Opus) — the format browsers record natively, so no conversion or extra tools are needed. WebM is playable in all modern browsers, VLC, ffmpeg, and most media players. To convert to MP3/WAV, run:
-
-```bash
-ffmpeg -i "Recording (1).webm" "Recording (1).mp3"
-```
+> Microphone access requires a secure context. `https://` (GitHub Pages) and `http://localhost` both qualify; opening the file directly as `file://` works in most browsers too.
 
 ---
 
-## Desktop recorder (Python)
+## Optional: save-to-disk versions
 
-`recorder.py` is a lightweight alternative that uses Python's `sounddevice` and `tkinter` to record directly from the OS microphone and save as WAV — no browser needed.
+The browser app keeps recordings in the browser. If you'd rather have audio written **straight to a folder on disk**, the repo also ships two zero-/low-dependency alternatives:
 
-```bash
-pip install sounddevice numpy
-python recorder.py
-```
+- **`recorder-server.js`** — a single-file Node.js server (no `npm install`) with the same UI that saves `.webm` files to a `recordings/` folder. Run `node recorder-server.js` and open `http://localhost:3131`. Windows users can double-click **`Run Recorder.cmd`**.
+- **`recorder.py`** — a lightweight Python + `tkinter` desktop recorder that captures from the OS mic and saves WAV. `pip install sounddevice numpy && python recorder.py`.
 
-Recordings are saved to a `recordings/` folder next to the script.
+Both are optional — the browser app needs neither.
 
 ---
 
 ## Contributing
 
-Pull requests welcome. The entire web UI lives inside `recorder-server.js` as a template literal — no build step, no bundler. Keep it that way.
+PRs welcome. The browser app is one self-contained `index.html` — no build step, no bundler, no dependencies. Keep it that way.
 
-- Bug fixes and usability improvements are always welcome
-- New features should be opt-in or behind settings; don't increase complexity by default
+- Bug fixes and usability improvements are always welcome.
+- New features should be opt-in or behind a setting; don't add complexity to the default path.
 
 ---
 
 ## License
 
-MIT
+[MIT](LICENSE)
