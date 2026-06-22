@@ -32,7 +32,7 @@
   --w65: rgba(196,181,253,.65);
   --w70: rgba(196,181,253,.70);
   /* accent-derived surfaces (all updated by applyTheme — defaults match #c4b5fd) */
-  --bg-glow:    rgb(27,17,64);
+  --bg-glow:    rgb(36,20,97);
   --bg-edge:    rgb(8,6,14);
   --surface-0:  rgb(16,13,28);
   --surface-1:  rgb(21,16,40);
@@ -62,7 +62,7 @@ body {
   transform: scale(1.1);
   transform-origin: top left;
   width: calc(100% / 1.1); height: calc(100% / 1.1); overflow: hidden;
-  background: radial-gradient(ellipse 85% 55% at 50% 28%, var(--bg-glow) 0%, var(--bg-edge) 68%);
+  background: radial-gradient(ellipse 92% 62% at 50% 26%, var(--bg-glow) 0%, var(--bg-edge) 74%);
   color: var(--text);
   font-family: 'Segoe UI Variable','Segoe UI',system-ui,sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -536,7 +536,7 @@ function applyTheme(hex) {
   var H=rgbToHue(r,g,b);
   function surf(sat,lit){var c=hslToRgb(H,sat,lit);return 'rgb('+c[0]+','+c[1]+','+c[2]+')';}
   function surfA(sat,lit,a){var c=hslToRgb(H,sat,lit);return 'rgba('+c[0]+','+c[1]+','+c[2]+','+a+')';}
-  s.setProperty('--bg-glow',   surf(.58,.16));  // main radial background (vibrant)
+  s.setProperty('--bg-glow',   surf(.66,.23));  // main radial background (vibrant)
   s.setProperty('--bg-edge',   surf(.40,.04));  // gradient outer (near-black tint)
   s.setProperty('--surface-0', surf(.36,.08));  // dropdown option bg (deepest)
   s.setProperty('--surface-1', surf(.42,.11));  // btn / modal / player / toast
