@@ -1003,6 +1003,7 @@ async function startRecording() {
   analyser.fftSize = 2048;
   analyser.smoothingTimeConstant = 0.84;
   src.connect(analyser);
+  await audioCtx.resume();
 
   var mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
     ? 'audio/webm;codecs=opus' : 'audio/webm';
@@ -1226,11 +1227,16 @@ function syncPPIcon() {
     : '<polygon points="7 3 21 12 7 21"/>';
 }
 
+function updateSeekFill() {
+  var pct = seekBar.max > 0 ? (seekBar.value / seekBar.max) * 100 : 0;
+  seekBar.style.background = 'linear-gradient(to right, #c4b5fd ' + pct + '%, rgba(255,255,255,.1) ' + pct + '%)';
+}
 audioEl.addEventListener('timeupdate', function() {
   if (!audioEl.duration) return;
   seekBar.value = (audioEl.currentTime / audioEl.duration) * 100;
   curTimeEl.textContent = fmtS(audioEl.currentTime);
   durTimeEl.textContent = fmtS(audioEl.duration);
+  updateSeekFill();
 });
 audioEl.addEventListener('loadedmetadata', function() {
   durTimeEl.textContent = fmtS(audioEl.duration);
@@ -1238,6 +1244,7 @@ audioEl.addEventListener('loadedmetadata', function() {
 
 seekBar.addEventListener('input', function() {
   if (audioEl.duration) audioEl.currentTime = (seekBar.value / 100) * audioEl.duration;
+  updateSeekFill();
 });
 ppBtn.addEventListener('click', function() { audioEl.paused ? audioEl.play() : audioEl.pause(); });
 speedSel.addEventListener('change', function() { audioEl.playbackRate = parseFloat(speedSel.value); });
@@ -1247,6 +1254,7 @@ function closePlayerFn() {
   audioEl.pause(); audioEl.src = '';
   playerBar.classList.remove('visible');
   activeRec = null;
+  seekBar.value = 0; updateSeekFill();
   document.querySelectorAll('.rec-item').forEach(function(el) { el.classList.remove('active'); });
 }
 
