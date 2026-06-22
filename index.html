@@ -535,6 +535,7 @@ var allRecs      = [];
 var activeRec    = null;
 var activeObjUrl = null;
 var silenceTimer = null;
+var currentRecDuration = 0; // fallback when audioEl.duration is Infinity (no WebM header)
 
 // ── refs ──────────────────────────────────────────────────────────────────────
 var dot         = document.getElementById('dot');
@@ -881,12 +882,14 @@ async function playRec(rec){
     if(!record||!record.blob){showToast('Recording not found','error');return;}
     if(activeObjUrl){URL.revokeObjectURL(activeObjUrl);activeObjUrl=null;}
     activeObjUrl=URL.createObjectURL(record.blob);
+    currentRecDuration=record.duration||0;
     audioEl.src=activeObjUrl;
     playerTitle.textContent=rec.name.replace(/\.[^.]+$/,'');
     playerBar.classList.add('visible');
     var spd=parseFloat(settings.defaultSpeed)||1;
     speedSel.value=String(spd);audioEl.playbackRate=spd;
     seekBar.value=0;updateSeekFill();
+    durTimeEl.textContent=currentRecDuration?fmtS(currentRecDuration):'—';
     audioEl.load();audioEl.play();
     seekMarks.innerHTML='';
     if(rec.markers&&rec.markers.length&&rec.duration){
@@ -916,15 +919,27 @@ function syncPPIcon(){
     ?'<rect x="6" y="4" width="4" height="16" rx="1.5"/><rect x="14" y="4" width="4" height="16" rx="1.5"/>'
     :'<polygon points="7 3 21 12 7 21"/>';
 }
+function effectiveDuration(){
+  // MediaRecorder WebM blobs have no duration header — audioEl.duration is Infinity
+  return isFinite(audioEl.duration)&&audioEl.duration>0 ? audioEl.duration : currentRecDuration;
+}
 audioEl.addEventListener('timeupdate',function(){
-  if(!audioEl.duration)return;
-  seekBar.value=(audioEl.currentTime/audioEl.duration)*100;
+  var dur=effectiveDuration();
+  if(!dur)return;
+  seekBar.value=(audioEl.currentTime/dur)*100;
   curTimeEl.textContent=fmtS(audioEl.currentTime);
-  durTimeEl.textContent=fmtS(audioEl.duration);
+  durTimeEl.textContent=fmtS(dur);
   updateSeekFill();
 });
-audioEl.addEventListener('loadedmetadata',function(){durTimeEl.textContent=fmtS(audioEl.duration);});
-seekBar.addEventListener('input',function(){if(audioEl.duration)audioEl.currentTime=(seekBar.value/100)*audioEl.duration;updateSeekFill();});
+audioEl.addEventListener('loadedmetadata',function(){
+  var dur=effectiveDuration();
+  if(dur)durTimeEl.textContent=fmtS(dur);
+});
+seekBar.addEventListener('input',function(){
+  var dur=effectiveDuration();
+  if(dur)audioEl.currentTime=(seekBar.value/100)*dur;
+  updateSeekFill();
+});
 ppBtn.addEventListener('click',function(){audioEl.paused?audioEl.play():audioEl.pause();});
 speedSel.addEventListener('change',function(){audioEl.playbackRate=parseFloat(speedSel.value);});
 closePlayer.addEventListener('click',closePlayerFn);
