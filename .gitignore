@@ -5,3 +5,4 @@ _transcripts/
 *.meta.json
 node_modules/
 .env
+settings.json

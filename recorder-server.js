@@ -5,17 +5,38 @@ const fs    = require('fs');
 const path  = require('path');
 const { exec } = require('child_process');
 
-const RECORDINGS_DIR = process.env.RECORDINGS_DIR || path.join(__dirname, 'recordings');
-const PORT = 3131;
+// ── settings ──────────────────────────────────────────────────────────────────
+const SETTINGS_FILE    = path.join(__dirname, 'settings.json');
+const DEFAULT_SETTINGS = { recordingsDir: './recordings', filenamePrefix: 'Recording', port: 3131 };
 
-const MIC_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-  <path d="M12 1C9.239 1 7 3.239 7 6v7a5 5 0 0 0 10 0V6c0-2.761-2.239-5-5-5z" fill="white"/>
-  <path d="M3.5 12a8.5 8.5 0 0 0 17 0"
-        stroke="white" stroke-width="1.8" fill="none" stroke-linecap="round"/>
-  <path d="M12 20.5v3"  stroke="white" stroke-width="1.8" stroke-linecap="round"/>
-  <path d="M8.5 23.5h7" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
-</svg>`;
+function loadSettings() {
+  try { return Object.assign({}, DEFAULT_SETTINGS, JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'))); }
+  catch (_) { return Object.assign({}, DEFAULT_SETTINGS); }
+}
+function saveSettings(s) { fs.writeFileSync(SETTINGS_FILE, JSON.stringify(s, null, 2)); }
 
+var settings = loadSettings();
+
+function resolveDir(d) { return path.isAbsolute(d) ? d : path.resolve(__dirname, d); }
+
+var RECORDINGS_DIR = resolveDir(process.env.RECORDINGS_DIR || settings.recordingsDir);
+var PORT           = parseInt(process.env.PORT || settings.port || DEFAULT_SETTINGS.port, 10);
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+function readBody(req, cb) {
+  var chunks = [];
+  req.on('data', function(c) { chunks.push(c); });
+  req.on('end',  function()  { cb(Buffer.concat(chunks)); });
+}
+function jsonBody(req, cb) {
+  readBody(req, function(buf) {
+    try { cb(null, JSON.parse(buf.toString())); } catch(e) { cb(e); }
+  });
+}
+function safeName(n) { return path.basename(String(n || '')); }
+function escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+// ── recordings list ───────────────────────────────────────────────────────────
 function getRecordings() {
   try {
     fs.mkdirSync(RECORDINGS_DIR, { recursive: true });
@@ -33,6 +54,15 @@ function getRecordings() {
   } catch (_) { return []; }
 }
 
+// ── svg assets ────────────────────────────────────────────────────────────────
+const MIC_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <path d="M12 1C9.239 1 7 3.239 7 6v7a5 5 0 0 0 10 0V6c0-2.761-2.239-5-5-5z" fill="white"/>
+  <path d="M3.5 12a8.5 8.5 0 0 0 17 0"
+        stroke="white" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+  <path d="M12 20.5v3"  stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+  <path d="M8.5 23.5h7" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+</svg>`;
+
 // ── HTML ──────────────────────────────────────────────────────────────────────
 const HTML = `<!DOCTYPE html>
 <html lang="en">
@@ -47,8 +77,8 @@ const HTML = `<!DOCTYPE html>
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --wave:    #c4b5fd;
   --text:    #f0eeff;
-  --muted:   #5c577a;   /* was #3e3a5c — now visible as chrome text */
-  --muted2:  #8a84b0;   /* was #6b658e — passes ~5.5:1 on dark bg */
+  --muted:   #5c577a;
+  --muted2:  #8a84b0;
   --red:     #e5383b;
   --green:   #34d399;
   --btn:     #12112a;
@@ -108,12 +138,9 @@ body {
   border-color: rgba(196,181,253,0.4);
   color: #c4b5fd;
 }
-.lib-toggle:focus-visible {
-  outline: 2px solid rgba(196,181,253,0.55);
-  outline-offset: 2px;
-}
+.lib-toggle:focus-visible { outline: 2px solid rgba(196,181,253,0.55); outline-offset: 2px; }
 
-/* expand tab — shown on the recorder panel edge when sidebar is collapsed */
+/* expand tab */
 .lib-show-btn {
   position: absolute; top: 50%; left: 0;
   transform: translateY(-50%);
@@ -130,15 +157,8 @@ body {
   box-shadow: 2px 0 14px rgba(196,181,253,0.07);
   z-index: 10;
 }
-.lib-show-btn:hover {
-  background: #1c1940;
-  color: #c4b5fd;
-  box-shadow: 2px 0 20px rgba(196,181,253,0.15);
-}
-.lib-show-btn:focus-visible {
-  outline: 2px solid rgba(196,181,253,0.55);
-  outline-offset: 2px;
-}
+.lib-show-btn:hover { background: #1c1940; color: #c4b5fd; box-shadow: 2px 0 20px rgba(196,181,253,0.15); }
+.lib-show-btn:focus-visible { outline: 2px solid rgba(196,181,253,0.55); outline-offset: 2px; }
 .lib-show-btn.visible { display: flex; }
 
 /* ── search ── */
@@ -153,21 +173,12 @@ body {
   transition: border-color .18s, box-shadow .18s;
 }
 .search-input::placeholder { color: var(--muted); }
-.search-input:focus {
-  border-color: rgba(196,181,253,.4);
-  box-shadow: 0 0 0 3px rgba(196,181,253,.07);
-}
+.search-input:focus { border-color: rgba(196,181,253,.4); box-shadow: 0 0 0 3px rgba(196,181,253,.07); }
 
 /* ── recording list ── */
-.rec-list {
-  flex: 1; overflow-y: auto;
-  list-style: none; padding: 0 5px 60px;
-}
+.rec-list { flex: 1; overflow-y: auto; list-style: none; padding: 0 5px 60px; }
 .rec-list::-webkit-scrollbar { width: 3px; }
-.rec-list::-webkit-scrollbar-thumb {
-  background: rgba(196,181,253,0.2);
-  border-radius: 2px;
-}
+.rec-list::-webkit-scrollbar-thumb { background: rgba(196,181,253,0.2); border-radius: 2px; }
 
 .rec-item {
   padding: 8px 9px; border-radius: 8px;
@@ -177,14 +188,8 @@ body {
   transform: translateX(0);
 }
 .rec-item:hover  { background: rgba(255,255,255,.06); transform: translateX(2px); }
-.rec-item.active {
-  background: rgba(196,181,253,.1);
-  transform: translateX(2px);
-}
-.rec-item:focus-visible {
-  outline: 2px solid rgba(196,181,253,0.45);
-  outline-offset: -2px;
-}
+.rec-item.active { background: rgba(196,181,253,.1);  transform: translateX(2px); }
+.rec-item:focus-visible { outline: 2px solid rgba(196,181,253,0.45); outline-offset: -2px; }
 
 .rec-name {
   font-size: 12px; font-weight: 500;
@@ -200,20 +205,10 @@ body {
   border-radius: 4px; color: var(--text);
   outline: none; padding: 1px 5px; width: 100%;
 }
-.rec-name-input:focus {
-  border-color: rgba(196,181,253,.7);
-  box-shadow: 0 0 0 2px rgba(196,181,253,.1);
-}
+.rec-name-input:focus { border-color: rgba(196,181,253,.7); box-shadow: 0 0 0 2px rgba(196,181,253,.1); }
 
-.rec-meta {
-  font-size: 10px; color: var(--muted2);
-  display: flex; gap: 8px;
-}
-.rec-meta span + span::before {
-  content: '·';
-  margin-right: 8px;
-  opacity: 0.4;
-}
+.rec-meta { font-size: 10px; color: var(--muted2); display: flex; gap: 8px; }
+.rec-meta span + span::before { content: '·'; margin-right: 8px; opacity: 0.4; }
 
 .rec-actions {
   position: absolute; right: 7px; top: 50%;
@@ -232,20 +227,10 @@ body {
 }
 .ic-btn:hover      { background: rgba(255,255,255,.15); color: var(--text); }
 .ic-btn.del:hover  { background: rgba(229,56,59,.2);    color: var(--red); }
-.ic-btn:focus-visible {
-  outline: 2px solid rgba(196,181,253,0.5);
-  outline-offset: 1px;
-}
+.ic-btn:focus-visible { outline: 2px solid rgba(196,181,253,0.5); outline-offset: 1px; }
 
-.rec-empty {
-  text-align: center; padding: 40px 16px;
-  font-size: 12px; color: var(--muted);
-  line-height: 1.7;
-}
-.rec-empty-icon {
-  display: block; margin: 0 auto 10px;
-  opacity: 0.25;
-}
+.rec-empty { text-align: center; padding: 40px 16px; font-size: 12px; color: var(--muted); line-height: 1.7; }
+.rec-empty-icon { display: block; margin: 0 auto 10px; opacity: 0.25; }
 
 /* ── recorder panel ── */
 .recorder-panel {
@@ -284,6 +269,20 @@ body {
 .mic-sel:hover  { color: var(--text); border-color: rgba(196,181,253,.25); }
 .mic-sel:focus  { border-color: rgba(196,181,253,.4); color: var(--text); }
 .mic-sel option { background: #0f0e1a; }
+
+/* ── settings button ── */
+.settings-btn {
+  width: 28px; height: 28px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.04);
+  color: var(--muted2);
+  cursor: pointer; border-radius: 7px;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .15s, color .15s, border-color .15s;
+  flex-shrink: 0;
+}
+.settings-btn:hover { background: rgba(255,255,255,0.1); color: var(--text); border-color: rgba(196,181,253,.3); }
+.settings-btn:focus-visible { outline: 2px solid rgba(196,181,253,0.55); outline-offset: 2px; }
 
 /* ── waveform ── */
 .wave-section {
@@ -333,10 +332,7 @@ body {
 .btn:hover  { transform: scale(1.07); }
 .btn:active { transform: scale(0.92); }
 .btn[hidden]{ display: none !important; }
-.btn:focus-visible {
-  outline: 2px solid rgba(196,181,253,0.6);
-  outline-offset: 4px;
-}
+.btn:focus-visible { outline: 2px solid rgba(196,181,253,0.6); outline-offset: 4px; }
 
 #btn-record {
   width: 80px; height: 80px; background: var(--red);
@@ -393,6 +389,7 @@ body {
   text-align: center; font-size: 10px;
   color: var(--muted); display: flex;
   align-items: center; justify-content: center; gap: 10px;
+  flex-wrap: wrap; padding: 0 16px;
 }
 kbd {
   background: rgba(255,255,255,.08);
@@ -415,11 +412,7 @@ kbd {
   opacity: 0;
   transition: max-height .28s var(--ease-out), opacity .22s, padding .28s var(--ease-out);
 }
-.player-bar.visible {
-  max-height: 58px;
-  padding: 10px 18px;
-  opacity: 1;
-}
+.player-bar.visible { max-height: 58px; padding: 10px 18px; opacity: 1; }
 
 .player-title {
   font-size: 11px; font-weight: 500; color: var(--text);
@@ -432,12 +425,9 @@ kbd {
   cursor: pointer; display: flex; align-items: center; justify-content: center;
   flex-shrink: 0; transition: background .15s, transform .12s var(--ease-out);
 }
-.pp-btn:hover { background: rgba(196,181,253,.26); transform: scale(1.08); }
+.pp-btn:hover  { background: rgba(196,181,253,.26); transform: scale(1.08); }
 .pp-btn:active { transform: scale(0.94); }
-.pp-btn:focus-visible {
-  outline: 2px solid rgba(196,181,253,0.55);
-  outline-offset: 3px;
-}
+.pp-btn:focus-visible { outline: 2px solid rgba(196,181,253,0.55); outline-offset: 3px; }
 
 .seek-wrap { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .seek-bar {
@@ -453,10 +443,7 @@ kbd {
   cursor: pointer; transition: transform .12s var(--ease-out);
 }
 .seek-bar:hover::-webkit-slider-thumb { transform: scale(1.2); }
-.seek-bar:focus-visible {
-  outline: 2px solid rgba(196,181,253,0.5);
-  outline-offset: 3px;
-}
+.seek-bar:focus-visible { outline: 2px solid rgba(196,181,253,0.5); outline-offset: 3px; }
 
 .seek-times {
   display: flex; justify-content: space-between;
@@ -491,10 +478,104 @@ kbd {
   transition: color .15s, background .15s;
 }
 .close-btn:hover { color: var(--text); background: rgba(255,255,255,.08); }
-.close-btn:focus-visible {
-  outline: 2px solid rgba(196,181,253,0.5);
-  outline-offset: 1px;
+.close-btn:focus-visible { outline: 2px solid rgba(196,181,253,0.5); outline-offset: 1px; }
+
+/* ── settings modal ── */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(0,0,0,.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; pointer-events: none;
+  transition: opacity .2s;
 }
+.modal-overlay.open { opacity: 1; pointer-events: all; }
+
+.modal {
+  background: #100f22;
+  border: 1px solid rgba(196,181,253,.18);
+  border-radius: 14px;
+  padding: 24px 26px 22px;
+  width: 380px; max-width: calc(100vw - 32px);
+  box-shadow: 0 24px 80px rgba(0,0,0,.7), 0 0 0 1px rgba(196,181,253,.06);
+  transform: translateY(10px) scale(0.98);
+  transition: transform .24s var(--ease-out);
+}
+.modal-overlay.open .modal { transform: translateY(0) scale(1); }
+
+.modal-hdr {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 22px;
+}
+.modal-title { font-size: 13px; font-weight: 600; color: var(--text); letter-spacing: .01em; }
+
+.form-row { margin-bottom: 16px; }
+.form-label {
+  display: block;
+  font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--muted2); margin-bottom: 6px;
+}
+.cfg-input {
+  width: 100%;
+  background: rgba(255,255,255,.05);
+  border: 1px solid var(--pborder);
+  border-radius: 8px;
+  color: var(--text); font-size: 12px;
+  padding: 8px 11px; outline: none;
+  font-family: 'Cascadia Code','Consolas',monospace;
+  transition: border-color .18s, box-shadow .18s;
+}
+.cfg-input:focus { border-color: rgba(196,181,253,.4); box-shadow: 0 0 0 3px rgba(196,181,253,.07); }
+.cfg-input::placeholder { color: var(--muted); }
+.form-hint { margin-top: 5px; font-size: 10px; color: var(--muted); line-height: 1.55; }
+.form-hint em { color: var(--muted2); font-style: normal; }
+
+.modal-actions {
+  display: flex; gap: 8px; justify-content: flex-end;
+  margin-top: 22px; padding-top: 18px;
+  border-top: 1px solid rgba(255,255,255,.06);
+}
+.modal-btn {
+  border: none; cursor: pointer; border-radius: 7px;
+  font-size: 11px; font-weight: 600; letter-spacing: .02em;
+  padding: 8px 18px;
+  transition: background .15s, color .15s;
+  font-family: inherit;
+}
+.modal-btn.cancel {
+  background: rgba(255,255,255,.07); color: var(--muted2);
+  border: 1px solid var(--border);
+}
+.modal-btn.cancel:hover { background: rgba(255,255,255,.12); color: var(--text); }
+.modal-btn.save-cfg {
+  background: rgba(196,181,253,.18); color: var(--wave);
+  border: 1px solid rgba(196,181,253,.28);
+}
+.modal-btn.save-cfg:hover { background: rgba(196,181,253,.28); }
+.modal-btn:focus-visible { outline: 2px solid rgba(196,181,253,0.55); outline-offset: 2px; }
+
+/* ── toast ── */
+.toast {
+  position: fixed; bottom: 22px; left: 50%;
+  transform: translateX(-50%) translateY(6px);
+  background: rgba(15,14,30,.9);
+  border: 1px solid rgba(196,181,253,.22);
+  color: var(--wave);
+  border-radius: 8px; padding: 8px 18px;
+  font-size: 11px; font-weight: 600;
+  white-space: nowrap;
+  opacity: 0; pointer-events: none;
+  transition: opacity .22s, transform .22s var(--ease-out);
+  z-index: 200;
+  backdrop-filter: blur(6px);
+}
+.toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+.toast.error { border-color: rgba(229,56,59,.3); color: var(--red); }
+.toast.warn  { border-color: rgba(251,191,36,.3); color: #fbbf24; }
 
 /* ── reduced motion ── */
 @media (prefers-reduced-motion: reduce) {
@@ -550,6 +631,12 @@ kbd {
           <path d="M3.5 12a8.5 8.5 0 0 0 17 0" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/>
         </svg>
         <select class="mic-sel" id="mic-sel"></select>
+        <button class="settings-btn" id="settings-btn" title="Settings (Ctrl+,)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
       </div>
     </header>
 
@@ -593,6 +680,7 @@ kbd {
       <span><kbd>Space</kbd> pause</span>
       <span><kbd>Esc</kbd> stop</span>
       <span><kbd>Ctrl+M</kbd> mark</span>
+      <span><kbd>Ctrl+,</kbd> settings</span>
     </div>
   </div>
 </div>
@@ -631,6 +719,47 @@ kbd {
   </button>
   <audio id="audio-el" preload="metadata"></audio>
 </div>
+
+<!-- ── Settings modal ── -->
+<div class="modal-overlay" id="settings-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title-el">
+  <div class="modal">
+    <div class="modal-hdr">
+      <span class="modal-title" id="modal-title-el">Settings</span>
+      <button class="close-btn" id="modal-close" title="Close (Esc)">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6"  y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="form-row">
+      <label class="form-label" for="cfg-dir">Save folder</label>
+      <input class="cfg-input" id="cfg-dir" type="text" placeholder="./recordings" autocomplete="off" spellcheck="false">
+      <p class="form-hint">Where recordings are saved. Relative to the server file, or an absolute path.</p>
+    </div>
+
+    <div class="form-row">
+      <label class="form-label" for="cfg-prefix">Filename prefix</label>
+      <input class="cfg-input" id="cfg-prefix" type="text" placeholder="Recording" autocomplete="off">
+      <p class="form-hint">Files are named <em>"Prefix (1).webm"</em>, <em>"Prefix (2).webm"</em>, …</p>
+    </div>
+
+    <div class="form-row">
+      <label class="form-label" for="cfg-port">Port</label>
+      <input class="cfg-input" id="cfg-port" type="number" min="1024" max="65535" placeholder="3131">
+      <p class="form-hint">Restart the server after changing the port.</p>
+    </div>
+
+    <div class="modal-actions">
+      <button class="modal-btn cancel" id="modal-cancel">Cancel</button>
+      <button class="modal-btn save-cfg" id="modal-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toast notification ── -->
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
 // ── canvas ────────────────────────────────────────────────────────────────────
@@ -672,32 +801,32 @@ var timerIv     = null;
 var idlePhase   = 0;
 var markers     = [];
 var allRecs     = [];
-var activeRec   = null; // {name, markers, duration}
+var activeRec   = null;
 
 // ── refs ──────────────────────────────────────────────────────────────────────
-var dot        = document.getElementById('dot');
-var timerEl    = document.getElementById('timer');
-var statusEl   = document.getElementById('status');
-var filenameEl = document.getElementById('filename');
-var btnRecord  = document.getElementById('btn-record');
-var btnPause   = document.getElementById('btn-pause');
-var btnResume  = document.getElementById('btn-resume');
-var btnStop    = document.getElementById('btn-stop');
-var markersRow = document.getElementById('markers-row');
-var micSel     = document.getElementById('mic-sel');
-var recList    = document.getElementById('rec-list');
-var searchEl   = document.getElementById('search');
-var playerBar  = document.getElementById('player-bar');
-var ppBtn      = document.getElementById('pp-btn');
-var ppIcon     = document.getElementById('pp-icon');
-var playerTitle= document.getElementById('player-title');
-var seekBar    = document.getElementById('seek-bar');
-var seekMarks  = document.getElementById('seek-marks');
-var curTimeEl  = document.getElementById('cur-time');
-var durTimeEl  = document.getElementById('dur-time');
-var speedSel   = document.getElementById('speed-sel');
-var closePlayer= document.getElementById('close-player');
-var audioEl    = document.getElementById('audio-el');
+var dot          = document.getElementById('dot');
+var timerEl      = document.getElementById('timer');
+var statusEl     = document.getElementById('status');
+var filenameEl   = document.getElementById('filename');
+var btnRecord    = document.getElementById('btn-record');
+var btnPause     = document.getElementById('btn-pause');
+var btnResume    = document.getElementById('btn-resume');
+var btnStop      = document.getElementById('btn-stop');
+var markersRow   = document.getElementById('markers-row');
+var micSel       = document.getElementById('mic-sel');
+var recList      = document.getElementById('rec-list');
+var searchEl     = document.getElementById('search');
+var playerBar    = document.getElementById('player-bar');
+var ppBtn        = document.getElementById('pp-btn');
+var ppIcon       = document.getElementById('pp-icon');
+var playerTitle  = document.getElementById('player-title');
+var seekBar      = document.getElementById('seek-bar');
+var seekMarks    = document.getElementById('seek-marks');
+var curTimeEl    = document.getElementById('cur-time');
+var durTimeEl    = document.getElementById('dur-time');
+var speedSel     = document.getElementById('speed-sel');
+var closePlayer  = document.getElementById('close-player');
+var audioEl      = document.getElementById('audio-el');
 
 // ── time formatting ───────────────────────────────────────────────────────────
 function pad2(n) { return n < 10 ? '0' + n : '' + n; }
@@ -847,10 +976,7 @@ async function loadMics() {
     var devs = await navigator.mediaDevices.enumerateDevices();
     var mics = devs.filter(function(d) { return d.kind === 'audioinput'; });
     micSel.innerHTML = '';
-    if (!mics.length) {
-      micSel.innerHTML = '<option value="">Default</option>';
-      return;
-    }
+    if (!mics.length) { micSel.innerHTML = '<option value="">Default</option>'; return; }
     mics.forEach(function(d, i) {
       var o = document.createElement('option');
       o.value = d.deviceId;
@@ -958,16 +1084,15 @@ function renderList() {
   var q = searchEl.value.trim().toLowerCase();
   var list = q ? allRecs.filter(function(r) { return r.name.toLowerCase().indexOf(q) !== -1; }) : allRecs;
 
-  // update count label
   var countEl = document.getElementById('lib-count');
   if (countEl) {
     var n = allRecs.length;
-    countEl.textContent = n ? ' · ' + n : '';
+    countEl.textContent = n ? ' \xb7 ' + n : '';
   }
 
   if (!list.length) {
     if (q) {
-      recList.innerHTML = '<li class="rec-empty">No results for "' + escH(q) + '"</li>';
+      recList.innerHTML = '<li class="rec-empty">No results for “' + escH(q) + '”</li>';
     } else {
       recList.innerHTML =
         '<li class="rec-empty">' +
@@ -1006,8 +1131,7 @@ function renderList() {
     });
     li.addEventListener('click', function(e) {
       if (e.target.closest('.rec-actions')) return;
-      setActive(li, rec);
-      playRec(rec);
+      setActive(li, rec); playRec(rec);
     });
     li.querySelector('.rn-btn').addEventListener('click', function(e) { e.stopPropagation(); startRename(li, rec); });
     li.querySelector('.dl-btn').addEventListener('click', function(e) { e.stopPropagation(); deleteRec(rec.name); });
@@ -1062,7 +1186,7 @@ function startRename(li, rec) {
 // ── delete ────────────────────────────────────────────────────────────────────
 async function deleteRec(name) {
   var base = name.replace(/\.[^.]+$/, '');
-  if (!confirm('Delete "' + base + '"?')) return;
+  if (!confirm('Delete “' + base + '”?')) return;
   await fetch('/delete', {
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ name: name })
@@ -1085,7 +1209,7 @@ function playRec(rec) {
       var dot = document.createElement('div');
       dot.className = 'seek-mark-dot';
       dot.style.left = (m.time / rec.duration * 100) + '%';
-      dot.title = m.label + ' · ' + fmtS(m.time);
+      dot.title = m.label + ' \xb7 ' + fmtS(m.time);
       dot.addEventListener('click', function() { audioEl.currentTime = m.time; });
       seekMarks.appendChild(dot);
     });
@@ -1126,11 +1250,93 @@ function closePlayerFn() {
   document.querySelectorAll('.rec-item').forEach(function(el) { el.classList.remove('active'); });
 }
 
+// ── settings panel ────────────────────────────────────────────────────────────
+var settingsOverlay = document.getElementById('settings-overlay');
+var cfgDir          = document.getElementById('cfg-dir');
+var cfgPrefix       = document.getElementById('cfg-prefix');
+var cfgPort         = document.getElementById('cfg-port');
+var settingsBtn     = document.getElementById('settings-btn');
+var modalClose      = document.getElementById('modal-close');
+var modalCancel     = document.getElementById('modal-cancel');
+var modalSave       = document.getElementById('modal-save');
+var toastEl         = document.getElementById('toast');
+var serverSettings  = { recordingsDir: './recordings', filenamePrefix: 'Recording', port: 3131 };
+var toastTimer      = null;
+
+async function loadServerSettings() {
+  try {
+    var r = await fetch('/settings');
+    serverSettings = await r.json();
+  } catch (_) {}
+}
+
+function openSettings() {
+  cfgDir.value    = serverSettings.recordingsDir  || './recordings';
+  cfgPrefix.value = serverSettings.filenamePrefix || 'Recording';
+  cfgPort.value   = serverSettings.port           || 3131;
+  settingsOverlay.classList.add('open');
+  setTimeout(function() { cfgDir.focus(); }, 50);
+}
+
+function closeSettings() {
+  settingsOverlay.classList.remove('open');
+}
+
+function showToast(msg, type) {
+  toastEl.textContent = msg;
+  toastEl.className   = 'toast show' + (type ? ' ' + type : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function() { toastEl.classList.remove('show', 'error', 'warn'); }, 3400);
+}
+
+async function saveServerSettings() {
+  var dir    = cfgDir.value.trim()    || './recordings';
+  var prefix = cfgPrefix.value.trim() || 'Recording';
+  var port   = parseInt(cfgPort.value, 10) || 3131;
+  if (port < 1024 || port > 65535) { showToast('Port must be between 1024 and 65535', 'error'); return; }
+  var portChanged = port !== serverSettings.port;
+
+  try {
+    var r = await fetch('/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ recordingsDir: dir, filenamePrefix: prefix, port: port })
+    });
+    var data = await r.json();
+    if (data.ok) {
+      serverSettings = { recordingsDir: dir, filenamePrefix: prefix, port: port };
+      closeSettings();
+      if (portChanged) {
+        showToast('Saved — restart the server for the port change to take effect.', 'warn');
+      } else {
+        showToast('Settings saved.', '');
+        loadRecordings();
+      }
+    } else {
+      showToast('Error: ' + (data.error || 'save failed'), 'error');
+    }
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
+  }
+}
+
+settingsBtn.addEventListener('click', openSettings);
+modalClose .addEventListener('click', closeSettings);
+modalCancel.addEventListener('click', closeSettings);
+modalSave  .addEventListener('click', saveServerSettings);
+settingsOverlay.addEventListener('click', function(e) { if (e.target === settingsOverlay) closeSettings(); });
+modalSave.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); saveServerSettings(); } });
+
 // ── keyboard shortcuts ────────────────────────────────────────────────────────
 document.addEventListener('keydown', function(e) {
+  if (settingsOverlay.classList.contains('open')) {
+    if (e.key === 'Escape') { e.preventDefault(); closeSettings(); }
+    return;
+  }
   var tag = document.activeElement ? document.activeElement.tagName : '';
   if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
 
+  if (e.ctrlKey && e.key === ',') { e.preventDefault(); openSettings(); return; }
   if (e.ctrlKey && e.key === 'r') { e.preventDefault(); if (appState === 'idle') startRecording(); return; }
   if (e.ctrlKey && e.key === 'm') { e.preventDefault(); addMarker(); return; }
   if (e.key === 'Escape') {
@@ -1149,12 +1355,9 @@ document.addEventListener('keydown', function(e) {
     if (e.key === 'ArrowRight') { audioEl.currentTime = Math.min(audioEl.duration || 0, audioEl.currentTime + 1); return; }
   }
   if (e.key === 'F2' && activeRec) {
-    var li = recList.querySelector('[data-name]');
-    var found = null;
     recList.querySelectorAll('.rec-item').forEach(function(el) {
-      if (el.dataset.name === activeRec.name) found = el;
+      if (el.dataset.name === activeRec.name) startRename(el, activeRec);
     });
-    if (found) startRename(found, activeRec);
     return;
   }
   if (e.key === 'Delete' && activeRec && appState === 'idle') { deleteRec(activeRec.name); return; }
@@ -1196,22 +1399,10 @@ setState('idle');
 runIdleAnim();
 loadMics();
 loadRecordings();
+loadServerSettings();
 </script>
 </body>
 </html>`;
-
-// ── helpers ───────────────────────────────────────────────────────────────────
-function readBody(req, cb) {
-  var chunks = [];
-  req.on('data', function(c) { chunks.push(c); });
-  req.on('end',  function()  { cb(Buffer.concat(chunks)); });
-}
-function jsonBody(req, cb) {
-  readBody(req, function(buf) {
-    try { cb(null, JSON.parse(buf.toString())); } catch(e) { cb(e); }
-  });
-}
-function safeName(n) { return path.basename(String(n || '')); }
 
 // ── server ────────────────────────────────────────────────────────────────────
 const server = http.createServer(function(req, res) {
@@ -1225,6 +1416,31 @@ const server = http.createServer(function(req, res) {
   if (method === 'GET' && url === '/mic.svg') {
     res.writeHead(200, { 'Content-Type': 'image/svg+xml' });
     return res.end(MIC_SVG);
+  }
+
+  // ── settings ──
+  if (method === 'GET' && url === '/settings') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify(settings));
+  }
+
+  if (method === 'POST' && url === '/settings') {
+    jsonBody(req, function(err, data) {
+      if (err) { res.writeHead(400); return res.end(JSON.stringify({ error: err.message })); }
+      var dir    = String(data.recordingsDir  || DEFAULT_SETTINGS.recordingsDir).trim();
+      var prefix = String(data.filenamePrefix || DEFAULT_SETTINGS.filenamePrefix).trim() || DEFAULT_SETTINGS.filenamePrefix;
+      var port   = parseInt(data.port, 10) || DEFAULT_SETTINGS.port;
+      if (port < 1024 || port > 65535) { res.writeHead(400); return res.end(JSON.stringify({ error: 'Invalid port' })); }
+      settings.recordingsDir  = dir;
+      settings.filenamePrefix = prefix;
+      settings.port           = port;
+      RECORDINGS_DIR = resolveDir(dir);
+      try { saveSettings(settings); } catch (e) { /* ignore write errors */ }
+      console.log('Settings updated: dir=' + RECORDINGS_DIR + '  prefix=' + prefix + '  port=' + port);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+    });
+    return;
   }
 
   // ── list recordings ──
@@ -1242,7 +1458,6 @@ const server = http.createServer(function(req, res) {
       var extMime = { '.webm':'audio/webm', '.wav':'audio/wav', '.mp3':'audio/mpeg',
                       '.m4a':'audio/mp4',   '.ogg':'audio/ogg' };
       var mime = extMime[path.extname(fname).toLowerCase()] || 'application/octet-stream';
-      // honour Range header for proper seeking
       var range = req.headers['range'];
       if (range) {
         var m = range.match(/bytes=(\d*)-(\d*)/);
@@ -1269,15 +1484,16 @@ const server = http.createServer(function(req, res) {
     readBody(req, function(buf) {
       fs.mkdir(RECORDINGS_DIR, { recursive:true }, function(mkErr) {
         if (mkErr) { res.writeHead(500); return res.end(JSON.stringify({ error: mkErr.message })); }
-        // find next Recording (N) number
         var existing = [];
         try { existing = fs.readdirSync(RECORDINGS_DIR); } catch (_) {}
+        var prefix = settings.filenamePrefix || 'Recording';
+        var re = new RegExp('^' + escapeRegex(prefix) + ' \\((\\d+)\\)\\.webm$', 'i');
         var max = 0;
         existing.forEach(function(f) {
-          var m = f.match(/^Recording \((\d+)\)\.\w+$/i);
+          var m = f.match(re);
           if (m) max = Math.max(max, parseInt(m[1], 10));
         });
-        var filename = 'Recording (' + (max + 1) + ').webm';
+        var filename = prefix + ' (' + (max + 1) + ').webm';
         var filepath = path.join(RECORDINGS_DIR, filename);
         fs.writeFile(filepath, buf, function(err) {
           if (err) {
@@ -1294,7 +1510,7 @@ const server = http.createServer(function(req, res) {
     return;
   }
 
-  // ── save metadata (duration + markers) ──
+  // ── save metadata ──
   if (method === 'POST' && url === '/save-meta') {
     jsonBody(req, function(err, data) {
       if (err) { res.writeHead(400); return res.end(JSON.stringify({ error: err.message })); }
@@ -1340,9 +1556,13 @@ const server = http.createServer(function(req, res) {
     return;
   }
 
-  // ── open folder in Explorer ──
+  // ── open recordings folder (cross-platform) ──
   if (method === 'POST' && url === '/open-folder') {
-    exec('explorer "' + RECORDINGS_DIR + '"');
+    fs.mkdirSync(RECORDINGS_DIR, { recursive: true });
+    var cmd = process.platform === 'win32'  ? 'explorer'
+            : process.platform === 'darwin' ? 'open'
+            : 'xdg-open';
+    exec(cmd + ' "' + RECORDINGS_DIR.replace(/"/g, '\\"') + '"');
     res.writeHead(200, { 'Content-Type':'application/json' });
     return res.end(JSON.stringify({ ok: true }));
   }

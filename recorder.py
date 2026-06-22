@@ -8,7 +8,7 @@ import os
 import sounddevice as sd
 import numpy as np
 
-SAVE_DIR = r"C:\Users\chint\Desktop\Projects\knowledge\claude_works\StudyRecordings\recordings"
+SAVE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'recordings')
 SAMPLE_RATE = 44100
 CHANNELS = 1
 CHUNK = 1024

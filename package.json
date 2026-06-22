@@ -1,0 +1,13 @@
+{
+  "name": "voice-recorder",
+  "version": "1.0.0",
+  "description": "Local-first browser voice recorder. No cloud, no account, no npm install needed.",
+  "main": "recorder-server.js",
+  "scripts": {
+    "start": "node recorder-server.js"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=14"
+  }
+}
