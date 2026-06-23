@@ -139,7 +139,6 @@ body {
 #status { margin-top:8px; font-size:10px; font-weight:600; letter-spacing:.18em; text-transform:uppercase; color:var(--muted2); min-height:14px; transition:color .25s; }
 #status.rec  { color:var(--red); }
 #status.done { color:var(--green); }
-#status.warn { color:#fbbf24; }
 #level-meter { position:relative; width:150px; height:5px; margin:9px auto 0; border-radius:3px; background:var(--w22); overflow:hidden; }
 #level-fill { height:100%; width:0%; border-radius:3px; background:var(--green); transition:width .07s linear, background .2s; }
 #level-fill.low { background:var(--muted2); }
@@ -500,7 +499,8 @@ loadSettings();
 
 var QUALITY_BITRATE = { high:192000, medium:96000, low:32000 };
 var SILENCE_THRESHOLD = 0.02;   // RMS below this counts as "silence" (covers typical room noise floor; tune via the live meter)
-var SILENCE_GUARD_SEC = 8;      // warn (don't stop) after this many seconds of sub-threshold input
+var DEAD_MIC_RMS = 0.0006;      // near-zero = muted/dead mic; a live but quiet mic still reads ambient noise above this
+var SILENCE_GUARD_SEC = 8;      // auto-pause after this many seconds of truly dead (not just quiet) input
 var LEVEL_FULL_RMS = 0.15;      // RMS that fills the meter to 100% (≈ normal speech)
 
 var COLOR_PRESETS = ['#c4b5fd','#93c5fd','#67e8f9','#6ee7b7','#34d399','#86efac','#f9a8d4','#fda4af','#fdba74','#fde68a'];
@@ -683,18 +683,19 @@ function runWaveAnim(){
     var sum=0;for(var i=0;i<buf.length;i++){var sv=(buf[i]/128.0)-1.0;sum+=sv*sv;}
     var rms=Math.sqrt(sum/buf.length);
     var silent=rms<SILENCE_THRESHOLD;
+    var deadMic=rms<DEAD_MIC_RMS;
     // ── live input-level meter ──
     if(levelFill){levelFill.style.width=Math.min(100,rms/LEVEL_FULL_RMS*100)+'%';levelFill.classList.toggle('low',silent);}
-    // ── silence guard: warn (never stop) if the mic feeds dead silence — e.g. muted mic ──
-    if(silent){
+    // ── dead-mic guard: auto-pause only on truly dead input (muted/unplugged), never on a quiet-but-live mic ──
+    if(deadMic){
       if(!guardWarned&&Date.now()-lastSoundTs>SILENCE_GUARD_SEC*1000){
         guardWarned=true;
-        statusEl.textContent='No audio — mic muted?';statusEl.className='warn';
-        showToast('⚠️ No audio detected — is your mic muted?','warn');
+        pauseRecording();
+        showToast('⏸️ Paused — no audio coming in. Unmute your mic, then press Resume.','warn');
+        return;   // pauseRecording() stopped the wave loop; don't reschedule a frame
       }
     }else{
-      lastSoundTs=Date.now();
-      if(guardWarned){guardWarned=false;statusEl.textContent='Recording';statusEl.className='rec';}
+      lastSoundTs=Date.now();guardWarned=false;
     }
     // ── optional auto-stop on prolonged silence (only if user enabled it) ──
     if(settings.silenceStop>0){
