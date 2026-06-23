@@ -12,9 +12,9 @@
 $ErrorActionPreference = 'Stop'
 
 # ---- config ----
-$Root        = 'C:\Users\chint\desktop\StudyRecordings'              # engine room: script, prompt, transcripts, logs, manifest
-$SourceDir   = 'C:\Users\chint\desktop\StudyRecordings\recordings'   # drop zone: clips live here. Sound Recorder saves to Documents\Sound recordings, which is junctioned to this folder.
-$Vault       = 'C:\Users\chint\desktop\MnC-Economics'
+$Root        = 'C:\Users\chint\Desktop\Projects\knowledge\claude_works\StudyRecordings'              # engine room: script, prompt, transcripts, logs, manifest
+$SourceDir   = 'C:\Users\chint\Desktop\Projects\knowledge\claude_works\StudyRecordings\recordings'   # drop zone: clips live here. Sound Recorder saves to Documents\Sound recordings, which is junctioned to this folder.
+$Vault       = 'C:\Users\chint\Desktop\Projects\knowledge\MnC-Economics'
 $BuzzExe     = 'C:\Users\chint\AppData\Local\Programs\Buzz\Buzz.exe'
 $Llt         = 'C:\Users\chint\AppData\Local\Programs\LenovoLegionToolkit\llt.exe'  # to wake dGPU for transcription
 $GpuWaitSec  = 30                                 # how long to wait for RTX to become CUDA-usable after switching
@@ -167,11 +167,12 @@ $brainBody
 ---
 RUN MODE: automated batch (NOT an interactive chat). The files below are transcripts of my
 spoken study sessions (Hinglish). Process them end to end in ONE pass, then stop — I'm asleep,
-so never ask me anything; make the sensible call and log what you did to Meta/Audit.md as usual.
+so never ask me anything; make the sensible call and log what you did to Meta/Processing Log.md as usual.
 For each transcript: read it, infer the working context from what I actually say, and
 create/update notes following every rule above plus the vault's own rules — Concept mode, the
 India jurisdiction check, source stamping, hub-and-spoke linking — and route asides into Open
-Questions / Checkout / Problems / Bridges as appropriate.
+Questions / Checkout / Problems / Bridges as appropriate. Then, per recording, write a study-session
+log grading how well I studied (Session Rating mode) into StudyRecordings\_session_logs\.
 
 Transcripts to process:
 $paths
@@ -189,13 +190,18 @@ function Invoke-ClaudeNotes($configDir, $label) {
   $env:CLAUDE_CONFIG_DIR = $configDir
   try {
     # acceptEdits = auto-approve file writes (no prompt to hang at midnight); tools limited to file ops.
-    # Capture output into a variable (don't let it flow to the pipeline) so the function's
-    # ONLY return value is the $true/$false below. Then append the captured output to the log.
+    # --verbose so Claude's turn-by-turn work (tool calls, text) is shown in detail.
+    # The ForEach-Object does two things per line: Write-Host shows it LIVE on screen so you
+    # can watch when you're here, and `$_` passes the line through into $out so it's captured.
+    # Write-Host writes to the host (not the pipeline), so $out stays clean and the function's
+    # ONLY pipeline return value is the $true/$false below. We then append $out to the run log
+    # in utf8 (matching Log()'s encoding) so you can read the whole session later when you're not.
     $out = Get-Content $tmpPrompt -Raw | & claude -p `
+        --verbose `
         --model sonnet `
         --permission-mode acceptEdits `
         --allowedTools Read Write Edit Glob Grep `
-        --add-dir $Vault 2>&1
+        --add-dir $Vault 2>&1 | ForEach-Object { Write-Host $_; $_ }
     $code = $LASTEXITCODE
     if ($out) { Add-Content -Path $LogFile -Value ($out | Out-String) -Encoding utf8 }
     if ($code -eq 0) { Log "Notes: $label succeeded (exit 0)."; return $true }
