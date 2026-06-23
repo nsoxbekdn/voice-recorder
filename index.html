@@ -139,6 +139,7 @@ body {
 #status { margin-top:8px; font-size:10px; font-weight:600; letter-spacing:.18em; text-transform:uppercase; color:var(--muted2); min-height:14px; transition:color .25s; }
 #status.rec  { color:var(--red); }
 #status.done { color:var(--green); }
+#status.warn { color:#fbbf24; }
 
 /* ── controls ── */
 .controls { margin-top:30px; display:flex; align-items:center; justify-content:center; gap:18px; min-height:80px; }
@@ -494,6 +495,7 @@ loadSettings();
 
 var QUALITY_BITRATE = { high:192000, medium:96000, low:32000 };
 var SILENCE_THRESHOLD = 0.008;
+var SILENCE_GUARD_SEC = 8;   // warn (don't stop) after this many seconds of dead-silent input
 
 var COLOR_PRESETS = ['#c4b5fd','#93c5fd','#67e8f9','#6ee7b7','#34d399','#86efac','#f9a8d4','#fda4af','#fdba74','#fde68a'];
 
@@ -596,6 +598,7 @@ var audioCtx=null, analyser=null, animId=null, idleAnimId=null;
 var startTime=0, pausedMs=0, pauseStart=0, timerIv=null, idlePhase=0;
 var markers=[], allRecs=[], activeRec=null, activeObjUrl=null;
 var silenceTimer=null, currentRecDuration=0;
+var lastSoundTs=0, guardWarned=false;
 
 // ── refs ──────────────────────────────────────────────────────────────────────
 var dot=document.getElementById('dot'), timerEl=document.getElementById('timer');
@@ -668,11 +671,26 @@ function runWaveAnim(){
   var buf=new Uint8Array(analyser.frequencyBinCount);
   analyser.getByteTimeDomainData(buf);
   drawWave(buf);
-  if(settings.silenceStop>0&&appState==='recording'){
+  if(appState==='recording'){
     var sum=0;for(var i=0;i<buf.length;i++){var sv=(buf[i]/128.0)-1.0;sum+=sv*sv;}
     var rms=Math.sqrt(sum/buf.length);
-    if(rms<SILENCE_THRESHOLD){if(!silenceTimer)silenceTimer=setTimeout(function(){silenceTimer=null;stopRecording();},settings.silenceStop*1000);}
-    else{if(silenceTimer){clearTimeout(silenceTimer);silenceTimer=null;}}
+    var silent=rms<SILENCE_THRESHOLD;
+    // ── silence guard: warn (never stop) if the mic feeds dead silence — e.g. muted mic ──
+    if(silent){
+      if(!guardWarned&&Date.now()-lastSoundTs>SILENCE_GUARD_SEC*1000){
+        guardWarned=true;
+        statusEl.textContent='No audio — mic muted?';statusEl.className='warn';
+        showToast('⚠️ No audio detected — is your mic muted?','warn');
+      }
+    }else{
+      lastSoundTs=Date.now();
+      if(guardWarned){guardWarned=false;statusEl.textContent='Recording';statusEl.className='rec';}
+    }
+    // ── optional auto-stop on prolonged silence (only if user enabled it) ──
+    if(settings.silenceStop>0){
+      if(silent){if(!silenceTimer)silenceTimer=setTimeout(function(){silenceTimer=null;stopRecording();},settings.silenceStop*1000);}
+      else{if(silenceTimer){clearTimeout(silenceTimer);silenceTimer=null;}}
+    }
   }
   animId=requestAnimationFrame(runWaveAnim);
 }
@@ -760,7 +778,7 @@ async function startRecording(){
   audioChunks=[];markers=[];
   mediaRec.ondataavailable=function(e){if(e.data&&e.data.size>0)audioChunks.push(e.data);};
   mediaRec.start(500);
-  startTime=Date.now();pausedMs=0;
+  startTime=Date.now();pausedMs=0;lastSoundTs=Date.now();guardWarned=false;
   stopIdleAnim();setLibCollapsed(true);
   setState('recording');startTimer();runWaveAnim();
 }
@@ -771,7 +789,7 @@ function pauseRecording(){
 }
 function resumeRecording(){
   if(!mediaRec||mediaRec.state!=='paused')return;
-  pausedMs+=Date.now()-pauseStart;mediaRec.resume();setState('recording');startTimer();runWaveAnim();
+  pausedMs+=Date.now()-pauseStart;lastSoundTs=Date.now();guardWarned=false;mediaRec.resume();setState('recording');startTimer();runWaveAnim();
 }
 async function stopRecording(){
   if(silenceTimer){clearTimeout(silenceTimer);silenceTimer=null;}
