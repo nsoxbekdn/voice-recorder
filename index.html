@@ -140,6 +140,10 @@ body {
 #status.rec  { color:var(--red); }
 #status.done { color:var(--green); }
 #status.warn { color:#fbbf24; }
+#level-meter { position:relative; width:150px; height:5px; margin:9px auto 0; border-radius:3px; background:var(--w22); overflow:hidden; }
+#level-fill { height:100%; width:0%; border-radius:3px; background:var(--green); transition:width .07s linear, background .2s; }
+#level-fill.low { background:var(--muted2); }
+#level-mark { position:absolute; top:-2px; bottom:-2px; width:2px; background:#fbbf24; opacity:.75; }
 
 /* ── controls ── */
 .controls { margin-top:30px; display:flex; align-items:center; justify-content:center; gap:18px; min-height:80px; }
@@ -312,6 +316,7 @@ kbd { background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); 
     <div class="wave-section" id="wave-section"><canvas id="waveform"></canvas></div>
     <div id="timer">00:00</div>
     <div id="status">Ready</div>
+    <div id="level-meter" hidden title="Live mic input level — mark = silence threshold"><div id="level-fill"></div><div id="level-mark"></div></div>
 
     <div class="controls">
       <button class="btn btn-sec" id="btn-pause" hidden title="Pause (Space)">
@@ -494,8 +499,9 @@ function persistSettings() { localStorage.setItem('vr.settings', JSON.stringify(
 loadSettings();
 
 var QUALITY_BITRATE = { high:192000, medium:96000, low:32000 };
-var SILENCE_THRESHOLD = 0.008;
-var SILENCE_GUARD_SEC = 8;   // warn (don't stop) after this many seconds of dead-silent input
+var SILENCE_THRESHOLD = 0.02;   // RMS below this counts as "silence" (covers typical room noise floor; tune via the live meter)
+var SILENCE_GUARD_SEC = 8;      // warn (don't stop) after this many seconds of sub-threshold input
+var LEVEL_FULL_RMS = 0.15;      // RMS that fills the meter to 100% (≈ normal speech)
 
 var COLOR_PRESETS = ['#c4b5fd','#93c5fd','#67e8f9','#6ee7b7','#34d399','#86efac','#f9a8d4','#fda4af','#fdba74','#fde68a'];
 
@@ -613,6 +619,8 @@ var seekBar=document.getElementById('seek-bar'), seekMarks=document.getElementBy
 var curTimeEl=document.getElementById('cur-time'), durTimeEl=document.getElementById('dur-time');
 var speedSel=document.getElementById('speed-sel'), closePlayer=document.getElementById('close-player');
 var audioEl=document.getElementById('audio-el'), toastEl=document.getElementById('toast');
+var levelMeter=document.getElementById('level-meter'), levelFill=document.getElementById('level-fill'), levelMark=document.getElementById('level-mark');
+if(levelMark)levelMark.style.left=Math.min(100,SILENCE_THRESHOLD/LEVEL_FULL_RMS*100)+'%';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 function pad2(n){return n<10?'0'+n:''+n;}
@@ -675,6 +683,8 @@ function runWaveAnim(){
     var sum=0;for(var i=0;i<buf.length;i++){var sv=(buf[i]/128.0)-1.0;sum+=sv*sv;}
     var rms=Math.sqrt(sum/buf.length);
     var silent=rms<SILENCE_THRESHOLD;
+    // ── live input-level meter ──
+    if(levelFill){levelFill.style.width=Math.min(100,rms/LEVEL_FULL_RMS*100)+'%';levelFill.classList.toggle('low',silent);}
     // ── silence guard: warn (never stop) if the mic feeds dead silence — e.g. muted mic ──
     if(silent){
       if(!guardWarned&&Date.now()-lastSoundTs>SILENCE_GUARD_SEC*1000){
@@ -709,6 +719,7 @@ function renderMarkerChips(){
 // ── UI state ──────────────────────────────────────────────────────────────────
 function setState(s,extra){
   appState=s;
+  if(levelMeter)levelMeter.hidden=(s!=='recording');
   btnRecord.hidden=btnPause.hidden=btnResume.hidden=btnStop.hidden=true;
   dot.classList.remove('on');btnRecord.classList.remove('recording');
   timerEl.classList.remove('saved');statusEl.className='';filenameEl.classList.remove('show');
