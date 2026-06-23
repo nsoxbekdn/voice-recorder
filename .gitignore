@@ -1,8 +1,13 @@
 recordings/
 _logs/
 _transcripts/
+_session_logs/
 .processed.json
 *.meta.json
 node_modules/
 .env
 settings.json
+
+# recordings -> vault-notes pipeline (separate project, kept local, not part of this repo)
+study-notes.ps1
+Run Study Notes.cmd
