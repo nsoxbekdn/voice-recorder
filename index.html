@@ -675,6 +675,14 @@ function drawWave(data){
   for(var i=0;i<len;i++){var x=i*sw,y=cy-pts[i]*amp;i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
   ctx.strokeStyle='rgba('+rc+',0.25)';ctx.lineWidth=1;ctx.stroke();
 }
+function autoPauseDeadMic(reason){
+  if(appState!=='recording'||guardWarned)return;
+  guardWarned=true;
+  console.log('[Recorder] auto-pause:',reason);
+  pauseRecording();
+  showToast('⏸️ Paused — no audio coming in. Unmute your mic, then press Resume.','warn');
+}
+var _rmsLogTs=0;
 function runWaveAnim(){
   var buf=new Uint8Array(analyser.frequencyBinCount);
   analyser.getByteTimeDomainData(buf);
@@ -684,14 +692,14 @@ function runWaveAnim(){
     var rms=Math.sqrt(sum/buf.length);
     var silent=rms<SILENCE_THRESHOLD;
     var deadMic=rms<DEAD_MIC_RMS;
+    // TEMP diagnostic — logs once/sec so we can calibrate the dead-mic threshold
+    if(Date.now()-_rmsLogTs>1000){_rmsLogTs=Date.now();var tk=audioStream&&audioStream.getAudioTracks()[0];console.log('[Recorder] rms='+rms.toFixed(5)+' deadMic='+deadMic+' track.muted='+(tk?tk.muted:'?'));}
     // ── live input-level meter ──
     if(levelFill){levelFill.style.width=Math.min(100,rms/LEVEL_FULL_RMS*100)+'%';levelFill.classList.toggle('low',silent);}
     // ── dead-mic guard: auto-pause only on truly dead input (muted/unplugged), never on a quiet-but-live mic ──
     if(deadMic){
-      if(!guardWarned&&Date.now()-lastSoundTs>SILENCE_GUARD_SEC*1000){
-        guardWarned=true;
-        pauseRecording();
-        showToast('⏸️ Paused — no audio coming in. Unmute your mic, then press Resume.','warn');
+      if(Date.now()-lastSoundTs>SILENCE_GUARD_SEC*1000){
+        autoPauseDeadMic('rms '+rms.toFixed(5)+' below dead threshold for '+SILENCE_GUARD_SEC+'s');
         return;   // pauseRecording() stopped the wave loop; don't reschedule a frame
       }
     }else{
@@ -779,6 +787,11 @@ async function startRecording(){
   var constraints={audio:devId?{deviceId:{exact:devId},channelCount:numCh}:{channelCount:numCh},video:false};
   try{audioStream=await navigator.mediaDevices.getUserMedia(constraints);}
   catch(err){setState('error',err.message);return;}
+  var micTrack=audioStream.getAudioTracks()[0];
+  if(micTrack){
+    micTrack.onmute=function(){console.log('[Recorder] track mute event');autoPauseDeadMic('mic track muted (OS/hardware)');};
+    micTrack.onended=function(){console.log('[Recorder] track ended');autoPauseDeadMic('mic disconnected');};
+  }
   audioCtx=new AudioContext();
   var src=audioCtx.createMediaStreamSource(audioStream);
   analyser=audioCtx.createAnalyser();analyser.fftSize=2048;analyser.smoothingTimeConstant=0.84;
