@@ -440,7 +440,7 @@ kbd { background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); 
           </select>
         </div>
         <div class="form-col">
-          <label class="form-label" for="cfg-silence">Auto-stop on silence</label>
+          <label class="form-label" for="cfg-silence">Auto-pause on silence</label>
           <select class="cfg-select" id="cfg-silence">
             <option value="0">Off</option>
             <option value="10">10 seconds</option>
@@ -705,9 +705,9 @@ function runWaveAnim(){
     }else{
       lastSoundTs=Date.now();guardWarned=false;
     }
-    // ── optional auto-stop on prolonged silence (only if user enabled it) ──
+    // ── optional auto-pause on prolonged silence (only if user enabled it) — pauses, never saves ──
     if(settings.silenceStop>0){
-      if(silent){if(!silenceTimer)silenceTimer=setTimeout(function(){silenceTimer=null;stopRecording();},settings.silenceStop*1000);}
+      if(silent){if(!silenceTimer)silenceTimer=setTimeout(function(){silenceTimer=null;pauseRecording();},settings.silenceStop*1000);}
       else{if(silenceTimer){clearTimeout(silenceTimer);silenceTimer=null;}}
     }
   }
