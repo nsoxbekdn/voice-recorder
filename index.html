@@ -41,12 +41,12 @@
 /* Surfaces are now neutral (theme-driven), not accent-derived. The accent only
    tints the --w** overlays, the waveform, and active states — so the colour
    picker still visibly recolours the app. */
-/* Pitch black — the page bottoms out at pure #000 (radial glow gives a faint
-   vignette above it so it isn't dead-flat). Surfaces are near-black neutrals
-   with clear elevation steps (surface-1 == btn, surface-2 == btn-h). Text is a
-   cool silver-white. Overlays are plain white so lifts/borders read crisp. */
+/* Pitch black — dead-flat pure #000 (glow == edge, so the radial gradient is a
+   solid black with no vignette). Surfaces are near-black neutrals with clear
+   elevation steps (surface-1 == btn, surface-2 == btn-h). Text is a cool
+   silver-white. Overlays are plain white so lifts/borders read crisp. */
 html[data-theme="dark"] {
-  --bg-glow:    rgb(13,13,15);
+  --bg-glow:    rgb(0,0,0);
   --bg-edge:    rgb(0,0,0);
   --surface-0:  rgb(8,8,10);
   --surface-1:  rgb(18,18,21);
