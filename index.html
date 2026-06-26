@@ -1178,10 +1178,11 @@ async function recoverDraft(){
     var blob=new Blob(chunks,{type:dr.mime||'audio/webm'});
     var dur=(dr.lastTs&&dr.startTime)?Math.max(0,(dr.lastTs-dr.startTime)/1000):0;
     var prefix=settings.filenamePrefix||'Recording';
-    var existing=await dbGetAll(),taken={};
-    existing.forEach(function(r){taken[r.name]=1;});
-    var base=prefix+' (recovered)',name=base+'.webm',n=1;
-    while(taken[name]){ n++; name=base+' '+n+'.webm'; }
+    // Same numbering scheme as a normal save — just the next index, no "(recovered)" suffix.
+    var re=new RegExp('^'+escapeRegex(prefix)+' \\((\\d+)\\)\\.webm$','i');
+    var existing=await dbGetAll(),max=0;
+    existing.forEach(function(r){var m=r.name.match(re);if(m)max=Math.max(max,parseInt(m[1],10));});
+    var name=prefix+' ('+(max+1)+').webm';
     await dbPut({name:name,blob:blob,size:blob.size,mtime:dr.startTime||Date.now(),duration:dur,markers:dr.markers||[]});
     clearDraft();await dbChunksClear();
     showToast('Recovered an unsaved recording.','');
