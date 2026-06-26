@@ -473,11 +473,15 @@ var _db = null;
 function openDB() {
   if (_db) return Promise.resolve(_db);
   return new Promise(function(res, rej) {
-    var req = indexedDB.open('VoiceRecorder', 1);
+    var req = indexedDB.open('VoiceRecorder', 2);
     req.onupgradeneeded = function(e) {
       var d = e.target.result;
       if (!d.objectStoreNames.contains('recordings'))
         d.createObjectStore('recordings', { keyPath: 'name' });
+      // Live chunk store: each MediaRecorder chunk is appended here while
+      // recording so an unsaved session survives a crash / browser close / power-off.
+      if (!d.objectStoreNames.contains('chunks'))
+        d.createObjectStore('chunks', { autoIncrement: true });
     };
     req.onsuccess = function(e) { _db = e.target.result; res(_db); };
     req.onerror   = function(e) { rej(e.target.error); };
@@ -488,6 +492,18 @@ async function dbGet(name) { var d=await openDB(); return new Promise(function(r
 async function dbPut(rec)  { var d=await openDB(); return new Promise(function(res,rej){var r=d.transaction('recordings','readwrite').objectStore('recordings').put(rec);r.onsuccess=function(){res();};r.onerror=function(){rej(r.error);};}); }
 async function dbDelete(name){var d=await openDB(); return new Promise(function(res,rej){var r=d.transaction('recordings','readwrite').objectStore('recordings').delete(name);r.onsuccess=function(){res();};r.onerror=function(){rej(r.error);};}); }
 async function dbClear()   { var d=await openDB(); return new Promise(function(res,rej){var r=d.transaction('recordings','readwrite').objectStore('recordings').clear();r.onsuccess=function(){res();};r.onerror=function(){rej(r.error);};}); }
+
+// ── live chunk persistence (crash recovery) ─────────────────────────────────────
+// Chunks are appended to IndexedDB as they arrive; a small "draft" marker in
+// localStorage records that a session is in progress. If the page dies before the
+// user stops, recoverDraft() rebuilds the blob from these chunks on next load.
+async function dbChunkAdd(blob){ var d=await openDB(); return new Promise(function(res,rej){var r=d.transaction('chunks','readwrite').objectStore('chunks').add(blob);r.onsuccess=function(){res();};r.onerror=function(){rej(r.error);};}); }
+async function dbChunksGetAll(){ var d=await openDB(); return new Promise(function(res,rej){var r=d.transaction('chunks','readonly').objectStore('chunks').getAll();r.onsuccess=function(){res(r.result);};r.onerror=function(){rej(r.error);};}); }
+async function dbChunksClear(){ var d=await openDB(); return new Promise(function(res,rej){var r=d.transaction('chunks','readwrite').objectStore('chunks').clear();r.onsuccess=function(){res();};r.onerror=function(){rej(r.error);};}); }
+
+function getDraft(){ try{ return JSON.parse(localStorage.getItem('vr.draft')||'null'); }catch(_){ return null; } }
+function setDraft(d){ try{ localStorage.setItem('vr.draft', JSON.stringify(d)); }catch(_){} }
+function clearDraft(){ try{ localStorage.removeItem('vr.draft'); }catch(_){} }
 
 // ── settings ──────────────────────────────────────────────────────────────────
 var settings = { filenamePrefix:'Recording', downloadFormat:'webm', quality:'high', channels:'mono', defaultSpeed:1, silenceStop:0, accentColor:'#c4b5fd' };
@@ -715,6 +731,7 @@ function addMarker(){
   if(appState!=='recording')return;
   var t=Math.max(0,Date.now()-startTime-pausedMs)/1000;
   markers.push({time:t,label:'Mark '+(markers.length+1)});renderMarkerChips();
+  var dr=getDraft();if(dr){dr.markers=markers;setDraft(dr);}
 }
 function renderMarkerChips(){
   markersRow.innerHTML='';
@@ -797,7 +814,16 @@ async function startRecording(){
   var bitrate=QUALITY_BITRATE[settings.quality]||QUALITY_BITRATE.high;
   mediaRec=new MediaRecorder(audioStream,{mimeType:mime,audioBitsPerSecond:bitrate});
   audioChunks=[];markers=[];
-  mediaRec.ondataavailable=function(e){if(e.data&&e.data.size>0)audioChunks.push(e.data);};
+  try{await dbChunksClear();}catch(_){}   // wipe any leftover from a prior session
+  setDraft({startTime:Date.now(),lastTs:Date.now(),mime:mime,markers:[]});
+  mediaRec.ondataavailable=function(e){
+    if(e.data&&e.data.size>0){
+      audioChunks.push(e.data);
+      // Persist this chunk immediately so a crash loses at most the last timeslice.
+      dbChunkAdd(e.data).catch(function(){});
+      var dr=getDraft();if(dr){dr.lastTs=Date.now();setDraft(dr);}
+    }
+  };
   mediaRec.start(500);
   startTime=Date.now();pausedMs=0;lastSoundTs=Date.now();guardWarned=false;
   stopIdleAnim();setLibCollapsed(true);
@@ -829,6 +855,8 @@ async function stopRecording(){
   var filename=prefix+' ('+(max+1)+').webm';
   try{await dbPut({name:filename,blob:blob,size:blob.size,mtime:Date.now(),duration:totalMs/1000,markers:savedMarkers});}
   catch(err){setState('error','IndexedDB save failed: '+err.message);return;}
+  // Saved for real — drop the crash-recovery draft + its chunks.
+  clearDraft();dbChunksClear().catch(function(){});
   if(settings.downloadFormat==='wav'){
     setState('converting');
     try{var wav=await convertToWav(blob);downloadBlob(wav,filename.replace('.webm','.wav'));}
@@ -1092,6 +1120,29 @@ function setLibCollapsed(on){libraryEl.classList.toggle('collapsed',on);libShowB
 libToggle.addEventListener('click',function(){setLibCollapsed(true);});
 libShowBtn.addEventListener('click',function(){setLibCollapsed(false);});
 
+// ── crash recovery ──────────────────────────────────────────────────────────────
+// On load, if a session was recording when the page died, rebuild its blob from the
+// persisted chunks and save it to the library automatically — no recording is lost.
+async function recoverDraft(){
+  var dr=getDraft();
+  if(!dr){ try{await dbChunksClear();}catch(_){} return; }  // no draft: sweep any stray chunks
+  var chunks;
+  try{ chunks=await dbChunksGetAll(); }catch(_){ chunks=[]; }
+  if(!chunks||!chunks.length){ clearDraft(); return; }       // nothing usable
+  try{
+    var blob=new Blob(chunks,{type:dr.mime||'audio/webm'});
+    var dur=(dr.lastTs&&dr.startTime)?Math.max(0,(dr.lastTs-dr.startTime)/1000):0;
+    var prefix=settings.filenamePrefix||'Recording';
+    var existing=await dbGetAll(),taken={};
+    existing.forEach(function(r){taken[r.name]=1;});
+    var base=prefix+' (recovered)',name=base+'.webm',n=1;
+    while(taken[name]){ n++; name=base+' '+n+'.webm'; }
+    await dbPut({name:name,blob:blob,size:blob.size,mtime:dr.startTime||Date.now(),duration:dur,markers:dr.markers||[]});
+    clearDraft();await dbChunksClear();
+    showToast('Recovered an unsaved recording.','');
+  }catch(e){ console.error('[Recorder] recovery failed',e); }
+}
+
 // ── boot ──────────────────────────────────────────────────────────────────────
 btnRecord.addEventListener('click',startRecording);
 btnPause .addEventListener('click',pauseRecording);
@@ -1099,7 +1150,8 @@ btnResume.addEventListener('click',resumeRecording);
 btnStop  .addEventListener('click',stopRecording);
 
 updateSeekFill();
-setState('idle');runIdleAnim();loadMics();loadRecordings();
+setState('idle');runIdleAnim();loadMics();
+recoverDraft().catch(function(){}).then(loadRecordings);
 </script>
 </body>
 </html>
