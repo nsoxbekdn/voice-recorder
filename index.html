@@ -144,15 +144,18 @@ body {
 #level-fill.low { background:var(--muted2); }
 #level-mark { position:absolute; top:-2px; bottom:-2px; width:2px; background:#fbbf24; opacity:.75; }
 
-/* ── recording timeline ── */
-.timeline { width:100%; max-width:440px; padding:0 16px; margin-top:18px; }
+/* ── recording timeline (DAW-style ruler) ── */
+.timeline { width:100%; padding:0 28px; margin-top:18px; }
 .timeline[hidden] { display:none; }
-.tl-track { position:relative; height:6px; background:var(--w10); border-radius:3px; }
-.tl-fill { position:absolute; inset:0; border-radius:3px; background:linear-gradient(90deg,var(--w22),var(--w40)); }
-.tl-tick { position:absolute; top:0; bottom:0; width:1px; background:var(--w28); }
-.tl-mark { position:absolute; top:50%; width:8px; height:8px; border-radius:50%; background:var(--wave); transform:translate(-50%,-50%); box-shadow:0 0 0 2px var(--surface-1); cursor:default; transition:transform .12s var(--ease-out); }
-.tl-mark:hover { transform:translate(-50%,-50%) scale(1.35); }
-.tl-labels { display:flex; justify-content:space-between; font-size:10px; font-weight:500; color:var(--muted2); font-variant-numeric:tabular-nums; margin-top:6px; }
+.tl-ruler { position:relative; height:34px; border-top:1px solid var(--border); }
+.tl-tick { position:absolute; top:0; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; pointer-events:none; }
+.tl-tick-label { margin-top:6px; font-size:9.5px; color:var(--muted2); font-variant-numeric:tabular-nums; letter-spacing:.02em; white-space:nowrap; }
+.tl-tick-line { width:1px; height:7px; background:var(--w26); margin-top:5px; }
+.tl-mark { position:absolute; top:25px; width:8px; height:8px; border-radius:50%; background:var(--wave); transform:translate(-50%,-50%); box-shadow:0 0 0 2px var(--surface-0); cursor:default; transition:transform .12s var(--ease-out); }
+.tl-mark:hover { transform:translate(-50%,-50%) scale(1.4); }
+.tl-head { position:absolute; top:0; left:0; transform:translateX(-50%); pointer-events:none; z-index:2; }
+.tl-head-knob { width:13px; height:12px; background:var(--text); clip-path:polygon(0 0,100% 0,100% 55%,50% 100%,0 55%); }
+.tl-head-line { width:1px; height:30px; margin:0 auto; background:var(--text); opacity:.5; }
 
 /* ── controls ── */
 .controls { margin-top:30px; display:flex; align-items:center; justify-content:center; gap:18px; min-height:80px; }
@@ -328,12 +331,11 @@ kbd { background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); 
     <div id="level-meter" hidden title="Live mic input level — mark = silence threshold"><div id="level-fill"></div><div id="level-mark"></div></div>
 
     <div class="timeline" id="timeline" hidden title="Recording timeline">
-      <div class="tl-track">
-        <div class="tl-fill"></div>
+      <div class="tl-ruler">
         <div class="tl-ticks" id="tl-ticks"></div>
         <div class="tl-marks" id="tl-marks"></div>
+        <div class="tl-head" id="tl-head"><div class="tl-head-knob"></div><div class="tl-head-line"></div></div>
       </div>
-      <div class="tl-labels"><span>0:00</span><span id="tl-end">0:00</span></div>
     </div>
 
     <div class="controls">
@@ -647,7 +649,8 @@ var statusEl=document.getElementById('status'), filenameEl=document.getElementBy
 var btnRecord=document.getElementById('btn-record'), btnPause=document.getElementById('btn-pause');
 var btnResume=document.getElementById('btn-resume'), btnStop=document.getElementById('btn-stop');
 var markersRow=document.getElementById('markers-row'), micSel=document.getElementById('mic-sel');
-var timelineEl=document.getElementById('timeline'), tlTicks=document.getElementById('tl-ticks'), tlMarks=document.getElementById('tl-marks'), tlEnd=document.getElementById('tl-end');
+var timelineEl=document.getElementById('timeline'), tlTicks=document.getElementById('tl-ticks'), tlMarks=document.getElementById('tl-marks'), tlHead=document.getElementById('tl-head');
+var tlLastIv=-1, tlLastN=-1;
 var recList=document.getElementById('rec-list'), searchEl=document.getElementById('search');
 var playerBar=document.getElementById('player-bar'), ppBtn=document.getElementById('pp-btn');
 var ppIcon=document.getElementById('pp-icon'), playerTitle=document.getElementById('player-title');
@@ -685,21 +688,32 @@ function currentElapsedSec(){
   var ms=(appState==='paused')?(pauseStart-startTime-pausedMs):(Date.now()-startTime-pausedMs);
   return Math.max(0,ms)/1000;
 }
-var TL_INTERVALS=[10,15,30,60,120,300,600,900,1800];
+// MM:SS.cs (centiseconds) — the ruler's DAW-style label format.
+function fmtCs(sec){
+  if(!isFinite(sec)||sec<0)sec=0;
+  var m=Math.floor(sec/60),s=Math.floor(sec-m*60),cs=Math.floor((sec-Math.floor(sec))*100);
+  return pad2(m)+':'+pad2(s)+'.'+pad2(cs);
+}
+var TL_DIVS=12;                                              // ruler shows 12 divisions (13 labels)
+var TL_IVS=[5,10,15,30,60,120,300,600,900,1800,3600];       // seconds per division (zoom steps)
 function updateTimeline(){
   if(appState!=='recording'&&appState!=='paused')return;
-  var el=currentElapsedSec(), span=el>0?el:1;
-  tlEnd.textContent=fmtS(el);
-  // tick lines: pick an interval that yields ~6 or fewer divisions, so they stay readable as the recording grows
-  var iv=TL_INTERVALS[TL_INTERVALS.length-1];
-  for(var i=0;i<TL_INTERVALS.length;i++){if(span/TL_INTERVALS[i]<=6){iv=TL_INTERVALS[i];break;}}
-  var th='';
-  for(var t=iv;t<span;t+=iv)th+='<div class="tl-tick" style="left:'+(t/span*100)+'%"></div>';
-  tlTicks.innerHTML=th;
-  // marker dots
-  var mh='';
-  markers.forEach(function(m){mh+='<div class="tl-mark" style="left:'+Math.min(100,m.time/span*100)+'%" title="'+escH(m.label+' \xb7 '+fmtS(m.time))+'"></div>';});
-  tlMarks.innerHTML=mh;
+  var el=currentElapsedSec();
+  // Pick the smallest division that keeps the whole recording on screen; ruler spans [0, W].
+  var iv=TL_IVS[TL_IVS.length-1];
+  for(var i=0;i<TL_IVS.length;i++){if(el<=TL_DIVS*TL_IVS[i]){iv=TL_IVS[i];break;}}
+  var W=TL_DIVS*iv;
+  // Rebuild labels/marks only when the zoom level or marker count changes (positions are otherwise fixed).
+  if(iv!==tlLastIv||markers.length!==tlLastN){
+    tlLastIv=iv;tlLastN=markers.length;
+    var th='';
+    for(var k=0;k<=TL_DIVS;k++){var t=k*iv;th+='<div class="tl-tick" style="left:'+(t/W*100)+'%"><div class="tl-tick-label">'+fmtCs(t)+'</div><div class="tl-tick-line"></div></div>';}
+    tlTicks.innerHTML=th;
+    var mh='';
+    markers.forEach(function(m){mh+='<div class="tl-mark" style="left:'+Math.min(100,m.time/W*100)+'%" title="'+escH(m.label+' \xb7 '+fmtS(m.time))+'"></div>';});
+    tlMarks.innerHTML=mh;
+  }
+  tlHead.style.left=Math.min(100,el/W*100)+'%';             // playhead at current time
 }
 
 // ── waveform ──────────────────────────────────────────────────────────────────
@@ -872,6 +886,7 @@ async function startRecording(){
   mediaRec.start(500);
   startTime=Date.now();pausedMs=0;lastSoundTs=Date.now();guardWarned=false;
   stopIdleAnim();setLibCollapsed(true);
+  tlLastIv=-1;tlLastN=-1;   // force the ruler to rebuild fresh for this session
   setState('recording');startTimer();updateTimeline();runWaveAnim();
 }
 function pauseRecording(){
