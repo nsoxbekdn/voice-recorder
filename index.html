@@ -12,6 +12,9 @@
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   /* accent */
   --wave:    #c4b5fd;
+  /* accent tuned for use as TEXT: bright on dark, darkened for light mode so it
+     keeps AA contrast on white. Recomputed by applyTheme() per theme. */
+  --wave-ink: #c4b5fd;
   --w05: rgba(196,181,253,.05);
   --w07: rgba(196,181,253,.07);
   --w08: rgba(196,181,253,.08);
@@ -38,47 +41,54 @@
 /* Surfaces are now neutral (theme-driven), not accent-derived. The accent only
    tints the --w** overlays, the waveform, and active states — so the colour
    picker still visibly recolours the app. */
-/* Warm charcoal — cozy, candle-lit dark. Same structure & elevation steps as
-   before (surface-1 == btn, surface-2 == btn-h), just shifted off the cold
-   near-black navy onto a warm neutral so the app reads inviting, not gloomy.
-   Overlays use a warm-white (255,250,242) so lifts/borders stay on-temperature. */
+/* Pitch black — the page bottoms out at pure #000 (radial glow gives a faint
+   vignette above it so it isn't dead-flat). Surfaces are near-black neutrals
+   with clear elevation steps (surface-1 == btn, surface-2 == btn-h). Text is a
+   cool silver-white. Overlays are plain white so lifts/borders read crisp. */
 html[data-theme="dark"] {
-  --bg-glow:    rgb(33,32,29);
-  --bg-edge:    rgb(19,18,16);
-  --surface-0:  rgb(26,25,22);
-  --surface-1:  rgb(35,33,30);
-  --surface-2:  rgb(46,43,39);
-  --player-bg:  rgba(30,28,25,.85);
-  --toast-bg:   rgba(35,33,30,.95);
-  --idle-wave:  rgb(138,131,120);
-  --text:    #f3efe9;
-  --muted:   #9d958a;
-  --muted2:  #c2bab0;
-  --btn:     rgb(35,33,30);
-  --btn-h:   rgb(46,43,39);
-  --border:  rgba(255,250,242,0.09);
-  --panel:   rgba(255,250,242,0.03);
-  --pborder: rgba(255,250,242,0.09);
+  --bg-glow:    rgb(13,13,15);
+  --bg-edge:    rgb(0,0,0);
+  --surface-0:  rgb(8,8,10);
+  --surface-1:  rgb(18,18,21);
+  --surface-2:  rgb(30,30,34);
+  --player-bg:  rgba(10,10,12,.86);
+  --toast-bg:   rgba(20,20,23,.96);
+  --idle-wave:  rgb(96,98,106);
+  --text:    #f5f6f8;
+  --muted:   #8b8e97;
+  --muted2:  #c0c3cc;
+  --btn:     rgb(18,18,21);
+  --btn-h:   rgb(30,30,34);
+  --border:  rgba(255,255,255,0.085);
+  --panel:   rgba(255,255,255,0.022);
+  --pborder: rgba(255,255,255,0.085);
 }
-/* Light — warm paper white to match the charcoal theme's temperature. */
+/* Silver white — cool, bright silver surfaces. Text is near-black and muted
+   tones are darkened to clear WCAG AA on light. */
 html[data-theme="light"] {
-  --bg-glow:    rgb(255,253,250);
-  --bg-edge:    rgb(236,231,223);
-  --surface-0:  rgb(255,253,250);
-  --surface-1:  rgb(255,253,250);
-  --surface-2:  rgb(247,243,237);
-  --player-bg:  rgba(255,253,250,.9);
-  --toast-bg:   rgba(255,253,250,.97);
-  --idle-wave:  rgb(190,182,170);
-  --text:    #26221c;
-  --muted:   #8a8175;
-  --muted2:  #5e574d;
-  --btn:     rgb(255,253,250);
-  --btn-h:   rgb(247,243,237);
-  --border:  rgba(54,44,28,0.10);
-  --panel:   rgba(54,44,28,0.025);
-  --pborder: rgba(54,44,28,0.09);
+  --bg-glow:    rgb(250,251,253);
+  --bg-edge:    rgb(213,217,224);
+  --surface-0:  rgb(255,255,255);
+  --surface-1:  rgb(255,255,255);
+  --surface-2:  rgb(236,239,243);
+  --player-bg:  rgba(255,255,255,.92);
+  --toast-bg:   rgba(255,255,255,.97);
+  --idle-wave:  rgb(166,171,181);
+  --text:    #181a20;
+  --muted:   #5d626e;
+  --muted2:  #393d47;
+  --btn:     rgb(255,255,255);
+  --btn-h:   rgb(236,239,243);
+  --border:  rgba(18,22,33,0.12);
+  --panel:   rgba(18,22,33,0.03);
+  --pborder: rgba(18,22,33,0.10);
 }
+/* Light-mode contrast fixes: a few labels/icons use a low-alpha accent (fine and
+   intentionally subtle on black, but unreadable on silver-white). On light only,
+   promote them to the darkened accent ink. Dark mode keeps its softer look. */
+html[data-theme="light"] .lib-hdr,
+html[data-theme="light"] .lib-toggle,
+html[data-theme="light"] .lib-show-btn { color: var(--wave-ink); }
 
 html { width:100%; height:100%; overflow:hidden; }
 body {
@@ -106,10 +116,10 @@ body {
 .lib-hdr { padding:18px 14px 8px; font-size:9px; font-weight:700; letter-spacing:.2em; text-transform:uppercase; color:var(--w55); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
 .lib-hdr-count { font-size:9px; font-weight:400; letter-spacing:0; text-transform:none; color:var(--muted); margin-left:6px; }
 .lib-toggle { width:22px; height:22px; flex-shrink:0; border:1px solid var(--w20); background:var(--w08); color:var(--w70); cursor:pointer; border-radius:5px; display:flex; align-items:center; justify-content:center; transition:background .15s,border-color .15s,color .15s; }
-.lib-toggle:hover { background:var(--w16); border-color:var(--w40); color:var(--wave); }
+.lib-toggle:hover { background:var(--w16); border-color:var(--w40); color:var(--wave-ink); }
 .lib-toggle:focus-visible { outline:2px solid var(--w55); outline-offset:2px; }
 .lib-show-btn { position:absolute; top:50%; left:0; transform:translateY(-50%); width:20px; height:48px; border:none; border-radius:0 7px 7px 0; background:var(--surface-1); border-top:1px solid var(--w24); border-right:1px solid var(--w24); border-bottom:1px solid var(--w24); color:var(--w65); cursor:pointer; display:none; align-items:center; justify-content:center; transition:background .18s,color .18s,box-shadow .18s; box-shadow:2px 0 14px var(--w07); z-index:10; }
-.lib-show-btn:hover { background:var(--surface-2); color:var(--wave); box-shadow:2px 0 20px var(--w15); }
+.lib-show-btn:hover { background:var(--surface-2); color:var(--wave-ink); box-shadow:2px 0 20px var(--w15); }
 .lib-show-btn:focus-visible { outline:2px solid var(--w55); outline-offset:2px; }
 .lib-show-btn.visible { display:flex; }
 .search-wrap { padding:0 10px 8px; flex-shrink:0; }
@@ -124,7 +134,7 @@ body {
 .rec-item.active { background:var(--w10); transform:translateX(2px); }
 .rec-item:focus-visible { outline:2px solid var(--w45); outline-offset:-2px; }
 .rec-name { font-size:12px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:175px; transition:color .15s; }
-.rec-item.active .rec-name { color:var(--wave); }
+.rec-item.active .rec-name { color:var(--wave-ink); }
 .rec-name-input { font-size:12px; font-weight:500; background:rgba(255,255,255,.1); border:1px solid var(--w45); border-radius:4px; color:var(--text); outline:none; padding:1px 5px; width:100%; }
 .rec-name-input:focus { border-color:var(--w70); box-shadow:0 0 0 2px var(--w10); }
 .rec-meta { font-size:10px; color:var(--muted2); display:flex; gap:8px; }
@@ -200,7 +210,7 @@ body {
 .btn-sec svg { display:block; }
 
 .markers-row { margin-top:12px; display:flex; flex-wrap:wrap; gap:5px; justify-content:center; min-height:18px; max-width:420px; padding:0 16px; }
-.marker-chip { font-size:10px; padding:2px 9px; border-radius:99px; background:var(--w08); border:1px solid var(--w20); color:var(--wave); font-variant-numeric:tabular-nums; cursor:default; letter-spacing:.02em; }
+.marker-chip { font-size:10px; padding:2px 9px; border-radius:99px; background:var(--w08); border:1px solid var(--w20); color:var(--wave-ink); font-variant-numeric:tabular-nums; cursor:default; letter-spacing:.02em; }
 
 #filename { margin-top:10px; font-size:10px; font-family:'Cascadia Code','Consolas',monospace; color:var(--muted2); min-height:13px; opacity:0; transition:opacity .4s; }
 #filename.show { opacity:1; }
@@ -262,7 +272,7 @@ kbd { background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); 
 .tg-btn { flex:1; padding:7px 0; border:none; border-right:1px solid var(--pborder); background:transparent; color:var(--muted2); font-size:11px; font-weight:500; cursor:pointer; transition:background .15s,color .15s; font-family:inherit; }
 .tg-btn:last-child { border-right:none; }
 .tg-btn:hover { background:rgba(255,255,255,.06); color:var(--text); }
-.tg-btn.active { background:var(--w18); color:var(--wave); }
+.tg-btn.active { background:var(--w18); color:var(--wave-ink); }
 .tg-btn:focus-visible { outline:2px solid var(--w55); outline-offset:-2px; }
 
 /* color picker */
@@ -290,12 +300,12 @@ kbd { background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); 
 .modal-btn { border:none; cursor:pointer; border-radius:7px; font-size:11px; font-weight:600; letter-spacing:.02em; padding:8px 18px; transition:background .15s,color .15s; font-family:inherit; }
 .modal-btn.cancel { background:rgba(255,255,255,.07); color:var(--muted2); border:1px solid var(--border); }
 .modal-btn.cancel:hover { background:rgba(255,255,255,.12); color:var(--text); }
-.modal-btn.save-cfg { background:var(--w18); color:var(--wave); border:1px solid var(--w28); }
+.modal-btn.save-cfg { background:var(--w18); color:var(--wave-ink); border:1px solid var(--w28); }
 .modal-btn.save-cfg:hover { background:var(--w28); }
 .modal-btn:focus-visible { outline:2px solid var(--w55); outline-offset:2px; }
 
 /* ── toast ── */
-.toast { position:fixed; bottom:22px; left:50%; transform:translateX(-50%) translateY(6px); background:var(--toast-bg); border:1px solid var(--w22); color:var(--wave); border-radius:8px; padding:8px 18px; font-size:11px; font-weight:600; white-space:nowrap; opacity:0; pointer-events:none; transition:opacity .22s,transform .22s var(--ease-out); z-index:200; backdrop-filter:blur(6px); }
+.toast { position:fixed; bottom:22px; left:50%; transform:translateX(-50%) translateY(6px); background:var(--toast-bg); border:1px solid var(--w22); color:var(--wave-ink); border-radius:8px; padding:8px 18px; font-size:11px; font-weight:600; white-space:nowrap; opacity:0; pointer-events:none; transition:opacity .22s,transform .22s var(--ease-out); z-index:200; backdrop-filter:blur(6px); }
 .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
 .toast.error { border-color:rgba(229,56,59,.3); color:var(--red); }
 .toast.warn  { border-color:rgba(251,191,36,.3); color:#fbbf24; }
@@ -603,6 +613,12 @@ function applyTheme(hex) {
   s.setProperty('--w45','rgba('+c+',.45)'); s.setProperty('--w50','rgba('+c+',.50)');
   s.setProperty('--w55','rgba('+c+',.55)'); s.setProperty('--w60','rgba('+c+',.60)');
   s.setProperty('--w65','rgba('+c+',.65)'); s.setProperty('--w70','rgba('+c+',.70)');
+  // Accent-as-text colour. On the silver-white light theme a pastel accent is
+  // unreadable, so derive a darker, richer tone from the same hue; on pitch
+  // black the bright accent already has strong contrast, so use it as-is.
+  var hue=rgbToHue(r,g,b), isLight=document.documentElement.getAttribute('data-theme')==='light';
+  if(isLight){ var ink=hslToRgb(hue,0.52,0.44); s.setProperty('--wave-ink','rgb('+ink[0]+','+ink[1]+','+ink[2]+')'); }
+  else { s.setProperty('--wave-ink',hex); }
   // Surfaces come from the light|dark theme now. The accent still tints the idle
   // waveform so changing it visibly recolours the central waveform.
   idleStrokeFlat='rgba('+c+',0.5)'; idleStrokeAnim='rgba('+c+',0.72)';
@@ -615,6 +631,8 @@ function applyMode(mode){
   mode=(mode==='light')?'light':'dark';
   document.documentElement.setAttribute('data-theme',mode);
   settings.theme=mode;
+  // Recompute the accent ink (light vs dark needs a different tone for contrast).
+  applyTheme(settings.accentColor || '#c4b5fd');
   var tb=document.getElementById('theme-btn');
   if(tb)tb.innerHTML=(mode==='dark')
     ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>'
